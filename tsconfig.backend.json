@@ -1,14 +1,17 @@
 {
   "extends": "./tsconfig.base.json",
-  "include": ["lib/**/*"],
-  "exclude": ["static/**/*"],
+  "files": ["app.ts", "compiler-args-app.ts"],
+  "include": ["**/*.js", "**/*.ts"],
+  "exclude": ["out", "test", "etc", "examples", "static", "**/*.d.ts", "cypress"],
   "compilerOptions": {
     /* Module resolution */
     "target": "esnext",
-    "module": "esnext",
-    "moduleResolution": "node",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
     /* Code generation */
-    "outDir": "./out/app",
-    "typeRoots": ["./typings", "./node_modules/@types"]
+    "outDir": "./out/dist",
+    "typeRoots": ["./node_modules/@types"],
+    /* Other options */
+    "allowJs": true
   }
 }

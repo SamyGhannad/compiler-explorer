@@ -22,14 +22,20 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+import {unwrap} from './assert.js';
+
 const configElement = document.getElementById('config');
+if (!configElement) {
+    throw new Error('Could not find config element in DOM tree');
+}
 
-window.httpRoot = configElement.getAttribute('httpRoot');
-window.staticRoot = configElement.getAttribute('staticRoot');
+// httpRoot & staticRoot are always a string and always set.
+window.httpRoot = unwrap(configElement.getAttribute('httpRoot'));
+window.staticRoot = unwrap(configElement.getAttribute('staticRoot'));
 
-const extraOptions: object = JSON.parse(decodeURIComponent(configElement.getAttribute('extraOptions')));
+const extraOptions: object = JSON.parse(decodeURIComponent(configElement.getAttribute('extraOptions') ?? '"%7B%7D"')); // Encoded {}
 for (const key in extraOptions) {
-    window.compilerExplorerOptions[key] = extraOptions[key];
+    window.compilerExplorerOptions[key] = extraOptions[key as keyof typeof extraOptions];
 }
 
 declare let __webpack_public_path__: string;
