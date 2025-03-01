@@ -24,11 +24,9 @@
 
 // The lists of keywords, operator, functions, and subroutines have been adopted from
 //    vs.language.fortran, Copyright (c) 2015, Thomas E. Dunn
+import * as monaco from 'monaco-editor';
 
-'use strict';
-const monaco = require('monaco-editor');
-
-function definition() {
+function definition(): monaco.languages.IMonarchLanguage {
     return {
         // Fortran is case insensitive, so ignore case...
         ignoreCase: true,
@@ -435,22 +433,28 @@ function definition() {
         tokenizer: {
             root: [
                 // identify type declarations (also functions)
-                [/[a-zA-Z][\w$]*(?=.*(::|function))/, {
-                    cases: {
-                        '@typeKeywords': 'type.identifier',
-                        '@keywords': 'keyword',
-                        '@default': 'identifier',
+                [
+                    /[a-zA-Z][\w$]*(?=.*(::|function))/,
+                    {
+                        cases: {
+                            '@typeKeywords': 'type.identifier',
+                            '@keywords': 'keyword',
+                            '@default': 'identifier',
+                        },
                     },
-                }],
+                ],
                 // identifiers and keywords
-                [/[a-zA-Z][\w$]*/, {
-                    cases: {
-                        '@keywords': 'keyword',
-                        '@functions': 'keyword',
-                        '@subroutines': 'keyword',
-                        '@default': 'identifier',
+                [
+                    /[a-zA-Z][\w$]*/,
+                    {
+                        cases: {
+                            '@keywords': 'keyword',
+                            '@functions': 'keyword',
+                            '@subroutines': 'keyword',
+                            '@default': 'identifier',
+                        },
                     },
-                }],
+                ],
 
                 // comments
                 [/!.*$/, 'comment'],
@@ -461,12 +465,15 @@ function definition() {
                 // delimiters and operators
                 [/[{}()[\]]/, '@brackets'],
                 [/[<>](?!@symbols)/, '@brackets'],
-                [/@symbols/, {
-                    cases: {
-                        '@operators': 'operator',
-                        '@default': '',
+                [
+                    /@symbols/,
+                    {
+                        cases: {
+                            '@operators': 'operator',
+                            '@default': '',
+                        },
                     },
-                }],
+                ],
 
                 // numbers
                 [/\d*\.\d+([eEdD][-+]?\d+)?/, 'number.float'],
@@ -479,7 +486,7 @@ function definition() {
                 [/[;,.]/, 'delimiter'],
 
                 // strings
-                [/"([^"\\]|\\.)*$/, 'string.invalid'],  // non-teminated string
+                [/"([^"\\]|\\.)*$/, 'string.invalid'], // non-teminated string
                 [/"/, 'string', '@string'],
 
                 // characters
@@ -488,13 +495,9 @@ function definition() {
                 [/'/, 'string.invalid'],
             ],
 
-            whitespace: [
-                [/[ \t\r\n]+/, 'white'],
-            ],
+            whitespace: [[/[ \t\r\n]+/, 'white']],
 
-            comment: [
-                [/!/, 'comment'],
-            ],
+            comment: [[/!/, 'comment']],
 
             string: [
                 [/[^\\"]+/, 'string'],
@@ -506,7 +509,7 @@ function definition() {
     };
 }
 
-function configuration() {
+function configuration(): monaco.languages.LanguageConfiguration {
     return {
         comments: {
             lineComment: '!',
@@ -521,8 +524,8 @@ function configuration() {
         autoClosingPairs: [
             {open: '[', close: ']'},
             {open: '(', close: ')'},
-            {open: '`', close: '`', notIn: ['string','comment']},
-            {open: "'", close: "'", notIn: ['string','comment']},
+            {open: '`', close: '`', notIn: ['string', 'comment']},
+            {open: "'", close: "'", notIn: ['string', 'comment']},
             {open: '"', close: '"', notIn: ['string']},
         ],
 
@@ -535,8 +538,10 @@ function configuration() {
         ],
 
         indentationRules: {
-            decreaseIndentPattern: /(end\s*(do|if|function|subroutine|program|module|block|associate|forall|select))|else|(^((?!select).)*(case))/,
-            increaseIndentPattern: /(^((?!end).)*(do\s|if(\s|\().*then|function\s|subroutine\s|program\s|module\s|block\s*|associate(\s|\()|forall|case)|else)/,
+            decreaseIndentPattern:
+                /(end\s*(do|if|function|subroutine|program|module|block|associate|forall|select))|else|(^((?!select).)*(case))/,
+            increaseIndentPattern:
+                /(^((?!end).)*(do\s|if(\s|\().*then|function\s|subroutine\s|program\s|module\s|block\s*|associate(\s|\()|forall|case)|else)/,
             unIndentedLinePattern: null,
         },
     };
@@ -548,4 +553,4 @@ monaco.languages.register({id: 'fortran'});
 monaco.languages.setMonarchTokensProvider('fortran', def);
 monaco.languages.setLanguageConfiguration('fortran', configuration());
 
-export = def;
+export default def;

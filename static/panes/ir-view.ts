@@ -22,149 +22,400 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import _ from 'underscore';
+import {Container} from 'golden-layout';
+import $ from 'jquery';
 import * as monaco from 'monaco-editor';
-import { Container } from 'golden-layout';
+import _ from 'underscore';
 
-import { Pane } from './pane';
-import { IrState } from './ir-view.interfaces';
-import { BasePaneState } from './pane.interfaces';
+import {editor} from 'monaco-editor';
+import IEditorMouseEvent = editor.IEditorMouseEvent;
 
-import { ga } from '../analytics';
-import { extendConfig } from '../monaco-config';
-import { applyColours } from '../colour';
+import {IrState} from './ir-view.interfaces.js';
+import {MonacoPaneState} from './pane.interfaces.js';
+import {MonacoPane} from './pane.js';
 
-export class Ir extends Pane<monaco.editor.IStandaloneCodeEditor, IrState> {
-    linkedFadeTimeoutId = -1;
-    irCode: any[] = [];
-    colours: any[] = [];
-    decorations: any = {};
-    previousDecorations: string[] = [];
+import {applyColours} from '../colour.js';
+import {extendConfig} from '../monaco-config.js';
 
-    constructor(hub: any, container: Container, state: IrState & BasePaneState) {
+import {unwrap} from '../assert.js';
+import * as Components from '../components.js';
+import {Hub} from '../hub.js';
+import {Toggles} from '../widgets/toggles.js';
+
+import {LLVMIrBackendOptions} from '../../types/compilation/ir.interfaces.js';
+import {CompilationResult} from '../compilation/compilation.interfaces.js';
+import {CompilerInfo} from '../compiler.interfaces.js';
+import {SentryCapture} from '../sentry.js';
+import {Alert} from '../widgets/alert.js';
+import {Compiler} from './compiler.js';
+
+export class Ir extends MonacoPane<monaco.editor.IStandaloneCodeEditor, IrState> {
+    private linkedFadeTimeoutId: NodeJS.Timeout | null = null;
+    private irCode?: any[] = undefined;
+    private srcColours?: Record<number, number | undefined> = undefined;
+    private colourScheme?: string = undefined;
+    private alertSystem: Alert;
+    private isAsmKeywordCtxKey: monaco.editor.IContextKey<boolean>;
+
+    // TODO: eliminate deprecated deltaDecorations monaco API
+    private decorations: any = {};
+    private previousDecorations: string[] = [];
+
+    private options: Toggles;
+    private filters: Toggles;
+    private toggleWrapButton: Toggles;
+    private lastOptions: LLVMIrBackendOptions = {
+        filterDebugInfo: true,
+        filterIRMetadata: true,
+        filterAttributes: true,
+        filterComments: true,
+        noDiscardValueNames: true,
+        demangle: true,
+    };
+    private cfgButton: JQuery;
+    private wrapButton: JQuery<HTMLElement>;
+    private wrapTitle: JQuery<HTMLElement>;
+
+    constructor(hub: Hub, container: Container, state: IrState & MonacoPaneState) {
         super(hub, container, state);
-        if (state && state.irOutput) {
-            this.showIrResults(state.irOutput);
+        if (state.irOutput) {
+            this.showIrResults(state.irOutput ?? []);
         }
+
+        this.onOptionsChange(true);
+        this.alertSystem = new Alert();
+        this.alertSystem.prefixMessage = 'LLVM IR';
     }
 
     override getInitialHTML(): string {
         return $('#ir').html();
     }
 
-    override createEditor(editorRoot: HTMLElement): monaco.editor.IStandaloneCodeEditor {
-        return monaco.editor.create(editorRoot, extendConfig({
-            language: 'llvm-ir',
-            readOnly: true,
-            glyphMargin: true,
-            lineNumbersMinChars: 3,
-        }));
+    override createEditor(editorRoot: HTMLElement): void {
+        this.editor = monaco.editor.create(
+            editorRoot,
+            extendConfig({
+                language: 'llvm-ir',
+                readOnly: true,
+                glyphMargin: true,
+                lineNumbersMinChars: 3,
+            }),
+        );
     }
 
-    override registerOpeningAnalyticsEvent(): void {
-        ga.proxy('send', {
-            hitType: 'event',
-            eventCategory: 'OpenViewPane',
-            eventAction: 'Ir',
+    override getPrintName() {
+        return 'Ir Output';
+    }
+
+    override getDefaultPaneName(): string {
+        return 'LLVM IR Viewer';
+    }
+
+    override registerButtons(state: IrState) {
+        super.registerButtons(state);
+        this.options = new Toggles(this.domRoot.find('.options'), state as unknown as Record<string, boolean>);
+        this.options.on('change', this.onOptionsChange.bind(this));
+        this.filters = new Toggles(this.domRoot.find('.filters'), state as unknown as Record<string, boolean>);
+        this.filters.on('change', this.onOptionsChange.bind(this));
+
+        this.cfgButton = this.domRoot.find('.cfg');
+        const createCfgView = () => {
+            return Components.getCfgViewWith(
+                this.compilerInfo.compilerId,
+                this.compilerInfo.editorId ?? 0,
+                this.compilerInfo.treeId ?? 0,
+                true,
+            );
+        };
+        this.container.layoutManager.createDragSource(this.cfgButton, createCfgView as any);
+        this.cfgButton.on('click', () => {
+            const insertPoint =
+                this.hub.findParentRowOrColumn(this.container.parent) ||
+                this.container.layoutManager.root.contentItems[0];
+            insertPoint.addChild(createCfgView());
         });
+
+        this.toggleWrapButton = new Toggles(this.domRoot.find('.wrap'), state as unknown as Record<string, boolean>);
+        this.toggleWrapButton.on('change', this.onToggleWrapChange.bind(this));
+        this.wrapButton = this.domRoot.find('.wrap-lines');
+        this.wrapTitle = this.wrapButton.prop('title');
+
+        if (state.wrap === true) {
+            this.wrapButton.prop('title', '[ON] ' + this.wrapTitle);
+        } else {
+            this.wrapButton.prop('title', '[OFF] ' + this.wrapTitle);
+        }
     }
 
-    override getPaneName(): string {
-        return `LLVM IR Viewer ${this.compilerInfo.compilerName}` +
-            `(Editor #${this.compilerInfo.editorId}, ` +
-            `Compiler #${this.compilerInfo.compilerId})`;
+    async onAsmToolTip(ed: monaco.editor.ICodeEditor) {
+        const pos = ed.getPosition();
+        if (!pos || !ed.getModel()) return;
+        const word = ed.getModel()?.getWordAtPosition(pos);
+        if (!word || !word.word) return;
+        const opcode = word.word.toUpperCase();
+
+        function newGitHubIssueUrl(): string {
+            return (
+                'https://github.com/compiler-explorer/compiler-explorer/issues/new?title=' +
+                encodeURIComponent('[BUG] Problem with ' + opcode + ' opcode')
+            );
+        }
+
+        function appendInfo(url: string): string {
+            return (
+                '<br><br>For more information, visit <a href="' +
+                url +
+                '" target="_blank" rel="noopener noreferrer">the ' +
+                opcode +
+                ' documentation <sup><small class="fas fa-external-link-alt opens-new-window"' +
+                ' title="Opens in a new window"></small></sup></a>.' +
+                '<br>If the documentation for this opcode is wrong or broken in some way, ' +
+                'please feel free to <a href="' +
+                newGitHubIssueUrl() +
+                '" target="_blank" rel="noopener noreferrer">' +
+                'open an issue on GitHub <sup><small class="fas fa-external-link-alt opens-new-window" ' +
+                'title="Opens in a new window"></small></sup></a>.'
+            );
+        }
+
+        try {
+            const asmHelp = await Compiler.getAsmInfo(word.word, 'llvm');
+            if (asmHelp) {
+                this.alertSystem.alert(opcode + ' help', asmHelp.html + appendInfo(asmHelp.url), {
+                    onClose: () => {
+                        ed.focus();
+                        ed.setPosition(pos);
+                    },
+                });
+            }
+        } catch (error) {
+            this.alertSystem.notify('There was an error fetching the documentation for this opcode (' + error + ').', {
+                group: 'notokenindocs',
+                alertClass: 'notification-error',
+                dismissTime: 5000,
+            });
+        }
+    }
+
+    onToggleWrapChange(): void {
+        const state = this.getCurrentState();
+        if (state.wrap) {
+            this.editor.updateOptions({wordWrap: 'on'});
+            this.wrapButton.prop('title', '[ON] ' + this.wrapTitle);
+        } else {
+            this.editor.updateOptions({wordWrap: 'off'});
+            this.wrapButton.prop('title', '[OFF] ' + this.wrapTitle);
+        }
+
+        this.updateState();
+    }
+
+    override getCurrentState() {
+        return {
+            ...this.options.get(),
+            ...this.filters.get(),
+            ...super.getCurrentState(),
+            wrap: this.toggleWrapButton.get().wrap,
+        };
     }
 
     override registerEditorActions(): void {
+        this.isAsmKeywordCtxKey = this.editor.createContextKey('isAsmKeyword', true);
         this.editor.addAction({
             id: 'viewsource',
             label: 'Scroll to source',
             keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.F10],
             contextMenuGroupId: 'navigation',
             contextMenuOrder: 1.5,
-            run: (editor) => {
-                const desiredLine = editor.getPosition().lineNumber - 1;
-                const source = this.irCode[desiredLine].source;
-                if (source !== null && source.file !== null) {
-                    this.eventHub.emit('editorLinkLine', this.compilerInfo.editorId, source.line, -1, -1, true);
+            run: editor => {
+                const position = editor.getPosition();
+                if (position != null && this.irCode) {
+                    const desiredLine = position.lineNumber - 1;
+                    const source = this.irCode[desiredLine].source;
+                    if (source !== null && source.file !== null) {
+                        this.eventHub.emit(
+                            'editorLinkLine',
+                            unwrap(this.compilerInfo.editorId),
+                            source.line,
+                            -1,
+                            -1,
+                            true,
+                        );
+                    }
                 }
             },
         });
+        this.editor.addAction({
+            id: 'viewasmdoc',
+            label: 'View IR documentation',
+            keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.F8],
+            keybindingContext: undefined,
+            precondition: 'isAsmKeyword',
+            contextMenuGroupId: 'help',
+            contextMenuOrder: 1.5,
+            run: this.onAsmToolTip.bind(this),
+        });
+
+        // This returns a vscode's ContextMenuController, but that type is not exposed in Monaco
+        const contextMenuContrib = this.editor.getContribution<any>('editor.contrib.contextmenu');
+
+        // This is hacked this way to be able to update the precondition keys before the context menu is shown.
+        // Right now Monaco does not expose a proper way to update those preconditions before the menu is shown,
+        // because the editor.onContextMenu callback fires after it's been shown, so it's of little use here
+        // The original source is src/vs/editor/contrib/contextmenu/browser/contextmenu.ts in vscode
+        const originalOnContextMenu: ((e: IEditorMouseEvent) => void) | undefined = contextMenuContrib._onContextMenu;
+        if (originalOnContextMenu) {
+            contextMenuContrib._onContextMenu = (e: IEditorMouseEvent) => {
+                if (e.target.position) {
+                    const currentWord = this.editor.getModel()?.getWordAtPosition(e.target.position);
+                    if (currentWord?.word) {
+                        this.isAsmKeywordCtxKey.set(this.isWordAsmKeyword(e.target.position.lineNumber, currentWord));
+                    }
+
+                    // And call the original method now that we've updated the context keys
+                    originalOnContextMenu.apply(contextMenuContrib, [e]);
+                }
+            };
+        } else {
+            // In case this ever stops working, we'll be notified
+            SentryCapture(new Error('Context menu hack did not return valid original method'));
+        }
     }
 
     override registerCallbacks(): void {
         const onMouseMove = _.throttle(this.onMouseMove.bind(this), 50);
         const onDidChangeCursorSelection = _.throttle(this.onDidChangeCursorSelection.bind(this), 500);
-        const onColoursOnCompile = this.eventHub.mediateDependentCalls(this.onColours.bind(this),
-            this.onCompileResult.bind(this));
 
-        this.eventHub.on('compileResult', onColoursOnCompile.dependencyProxy, this);
-        this.eventHub.on('colours', onColoursOnCompile.dependentProxy, this);
+        this.eventHub.on('renamePane', this.updateState.bind(this));
+
+        this.eventHub.on('compileResult', this.onCompileResult.bind(this));
+        this.eventHub.on('colours', this.onColours.bind(this));
         this.eventHub.on('panesLinkLine', this.onPanesLinkLine.bind(this));
 
-        this.editor.onMouseMove((event) => onMouseMove(event));
-        this.editor.onDidChangeCursorSelection((event) => onDidChangeCursorSelection(event));
+        this.editor.onMouseMove(event => onMouseMove(event));
+        this.editor.onDidChangeCursorSelection(event => onDidChangeCursorSelection(event));
 
         this.eventHub.emit('irViewOpened', this.compilerInfo.compilerId);
         this.eventHub.emit('requestSettings');
     }
 
-    override onCompileResult(compilerId: number, compiler: any, result: any): void {
+    onOptionsChange(force = false) {
+        const options = this.options.get();
+        const filters = this.filters.get();
+        const newOptions: LLVMIrBackendOptions = {
+            filterDebugInfo: filters['filter-debug-info'],
+            filterIRMetadata: filters['filter-instruction-metadata'],
+            filterAttributes: filters['filter-attributes'],
+            filterComments: filters['filter-comments'],
+            noDiscardValueNames: options['-fno-discard-value-names'],
+            demangle: options['demangle-symbols'],
+        };
+        let changed = false;
+        for (const k in newOptions) {
+            if (newOptions[k as keyof LLVMIrBackendOptions] !== this.lastOptions[k as keyof LLVMIrBackendOptions]) {
+                changed = true;
+                break;
+            }
+        }
+        this.lastOptions = newOptions;
+        if (changed || force) {
+            this.eventHub.emit('llvmIrViewOptionsUpdated', this.compilerInfo.compilerId, newOptions, true);
+        }
+    }
+
+    override onCompileResult(compilerId: number, compiler: CompilerInfo, result: CompilationResult): void {
         if (this.compilerInfo.compilerId !== compilerId) return;
-        if (result.hasIrOutput) {
-            this.showIrResults(result.irOutput);
+        if (result.irOutput) {
+            this.showIrResults(unwrap(result.irOutput).asm);
+            this.tryApplyIrColours();
         } else if (compiler.supportsIrView) {
             this.showIrResults([{text: '<No output>'}]);
         }
     }
 
-    override onCompiler(compilerId: number, compiler: any, options: unknown, editorId: number): void {
+    override onCompiler(
+        compilerId: number,
+        compiler: CompilerInfo | null,
+        options: string,
+        editorId: number,
+        treeId: number,
+    ): void {
         if (this.compilerInfo.compilerId !== compilerId) return;
         this.compilerInfo.compilerName = compiler ? compiler.name : '';
         this.compilerInfo.editorId = editorId;
-        this.setTitle();
+        this.compilerInfo.treeId = treeId;
+        this.updateTitle();
         if (compiler && !compiler.supportsIrView) {
             this.editor.setValue('<LLVM IR output is not supported for this compiler>');
         }
     }
 
-    showIrResults(result: any[]): void {
-        if (!this.editor) return;
-        this.irCode = result;
-        this.editor.getModel().setValue(result.length
-            ? _.pluck(result, 'text').join('\n')
-            : '<No LLVM IR generated>');
+    showIrResults(result: any): void {
+        if (result && Array.isArray(result)) {
+            this.irCode = result;
+            this.editor
+                .getModel()
+                ?.setValue(result.length ? _.pluck(result, 'text').join('\n') : '<No LLVM IR generated>');
+        } else {
+            this.irCode = [];
+        }
 
         if (!this.isAwaitingInitialResults) {
             if (this.selection) {
                 this.editor.setSelection(this.selection);
-                this.editor.revealLinesInCenter(this.selection.startLineNumber,
-                    this.selection.endLineNumber);
+                this.editor.revealLinesInCenter(this.selection.startLineNumber, this.selection.endLineNumber);
             }
             this.isAwaitingInitialResults = true;
         }
     }
 
-    onColours(compilerId: number, colours: any, scheme: any): void {
-        if (compilerId !== this.compilerInfo.compilerId) return;
+    tryApplyIrColours(): void {
+        if (!this.srcColours || !this.colourScheme || !this.irCode || this.irCode.length === 0) return;
+
         const irColours: Record<number, number> = {};
         for (const [index, code] of this.irCode.entries()) {
-            if (code.source
-                && code.source.file === null
-                && code.source.line > 0
-                && colours[code.source.line - 1] !== undefined) {
-                irColours[index] = colours[code.source.line - 1];
+            if (
+                code.source &&
+                code.source.file === null &&
+                code.source.line > 0 &&
+                this.srcColours[code.source.line - 1] !== undefined
+            ) {
+                irColours[index] = this.srcColours[code.source.line - 1]!;
             }
         }
-        this.colours = applyColours(this.editor, irColours, scheme, this.colours);
+        applyColours(irColours, this.colourScheme, this.editorDecorations);
     }
 
-    onMouseMove(e: monaco.editor.IEditorMouseEvent): void {
-        if (e === null || e.target === null || e.target.position === null) return;
-        if (this.settings.hoverShowSource === true && this.irCode) {
+    onColours(editorId: number, srcColours: Record<number, number>, scheme: string): void {
+        if (editorId !== this.compilerInfo.editorId) return;
+        this.colourScheme = scheme;
+        this.srcColours = srcColours;
+
+        this.tryApplyIrColours();
+    }
+
+    getLineTokens = (line: number): monaco.Token[] => {
+        const model = this.editor.getModel();
+        if (!model || line > model.getLineCount()) return [];
+        const flavour = model.getLanguageId();
+        const tokens = monaco.editor.tokenize(model.getLineContent(line), flavour);
+        return tokens.length > 0 ? tokens[0] : [];
+    };
+
+    isWordAsmKeyword = (lineNumber: number, word: monaco.editor.IWordAtPosition): boolean => {
+        return this.getLineTokens(lineNumber).some(t => {
+            return (
+                t.offset + 1 === word.startColumn && (t.type === 'keyword.llvm-ir' || t.type === 'operators.llvm-ir')
+            );
+        });
+    };
+
+    async onMouseMove(e: monaco.editor.IEditorMouseEvent): Promise<void> {
+        if (e.target.position === null) return;
+        if (this.settings.hoverShowSource === true) {
             this.clearLinkedLines();
-            const hoverCode = this.irCode[e.target.position.lineNumber - 1];
-            if (hoverCode) {
+            if (this.irCode && e.target.position.lineNumber - 1 in this.irCode) {
+                const hoverCode = this.irCode[e.target.position.lineNumber - 1];
                 let sourceLine = -1;
                 let sourceColumnBegin = -1;
                 let sourceColumnEnd = -1;
@@ -177,10 +428,70 @@ export class Ir extends Pane<monaco.editor.IStandaloneCodeEditor, IrState> {
                     }
                 }
 
-                this.eventHub.emit('editorLinkLine', this.compilerInfo.editorId, sourceLine, sourceColumnBegin,
-                    sourceColumnEnd, false);
-                this.eventHub.emit('panesLinkLine', this.compilerInfo.compilerId, sourceLine, sourceColumnBegin,
-                    sourceColumnEnd, false, this.getPaneName());
+                this.eventHub.emit(
+                    'editorLinkLine',
+                    unwrap(this.compilerInfo.editorId),
+                    sourceLine,
+                    sourceColumnBegin,
+                    sourceColumnEnd,
+                    false,
+                );
+                this.eventHub.emit(
+                    'panesLinkLine',
+                    this.compilerInfo.compilerId,
+                    sourceLine,
+                    sourceColumnBegin,
+                    sourceColumnEnd,
+                    false,
+                    this.getPaneName(),
+                );
+            }
+        }
+
+        const currentWord = this.editor.getModel()?.getWordAtPosition(e.target.position);
+        if (currentWord?.word) {
+            let word = currentWord.word;
+            let startColumn = currentWord.startColumn;
+            // Avoid throwing an exception if somehow (How?) we have a non-existent lineNumber.
+            // c.f. https://sentry.io/matt-godbolt/compiler-explorer/issues/285270358/
+            if (e.target.position.lineNumber <= (this.editor.getModel()?.getLineCount() ?? 0)) {
+                // Hacky workaround to check for negative numbers.
+                // c.f. https://github.com/compiler-explorer/compiler-explorer/issues/434
+                const lineContent = this.editor.getModel()?.getLineContent(e.target.position.lineNumber);
+                if (lineContent && lineContent[currentWord.startColumn - 2] === '-') {
+                    word = '-' + word;
+                    startColumn -= 1;
+                }
+            }
+            const range = new monaco.Range(
+                e.target.position.lineNumber,
+                Math.max(startColumn, 1),
+                e.target.position.lineNumber,
+                currentWord.endColumn,
+            );
+
+            if (this.settings.hoverShowAsmDoc && this.isWordAsmKeyword(e.target.position.lineNumber, currentWord)) {
+                try {
+                    const response = await Compiler.getAsmInfo(currentWord.word, 'llvm');
+                    if (!response) return;
+                    this.decorations.asmToolTip = [
+                        {
+                            range: range,
+                            options: {
+                                isWholeLine: false,
+                                hoverMessage: [
+                                    {
+                                        value: response.tooltip + '\n\nMore information available in the context menu.',
+                                        isTrusted: true,
+                                    },
+                                ],
+                            },
+                        },
+                    ];
+                    this.updateDecorations();
+                } catch {
+                    // ignore errors fetching tooltips
+                }
             }
         }
     }
@@ -191,23 +502,27 @@ export class Ir extends Pane<monaco.editor.IStandaloneCodeEditor, IrState> {
         columnBegin: number,
         columnEnd: number,
         revealLinesInEditor: boolean,
-        sender: string
+        sender: string,
     ): void {
         if (compilerId !== this.compilerInfo.compilerId) return;
         const lineNumbers: number[] = [];
         const directlyLinkedLineNumbers: number[] = [];
         const isSignalFromAnotherPane = sender !== this.getPaneName();
 
-        for (const [index, irLine] of this.irCode.entries()) {
-            if (irLine.source && irLine.source.file === null && irLine.source.line === lineNumber) {
-                const line = index + 1;
-                const currentColumn = irLine.source.column;
-                lineNumbers.push(line);
-                if (isSignalFromAnotherPane
-                    && currentColumn
-                    && columnBegin <= currentColumn
-                    && currentColumn <= columnEnd) {
-                    directlyLinkedLineNumbers.push(line);
+        if (this.irCode) {
+            for (const [index, irLine] of this.irCode.entries()) {
+                if (irLine.source && irLine.source.file === null && irLine.source.line === lineNumber) {
+                    const line = index + 1;
+                    const currentColumn = irLine.source.column;
+                    lineNumbers.push(line);
+                    if (
+                        isSignalFromAnotherPane &&
+                        currentColumn &&
+                        columnBegin <= currentColumn &&
+                        currentColumn <= columnEnd
+                    ) {
+                        directlyLinkedLineNumbers.push(line);
+                    }
                 }
             }
         }
@@ -218,7 +533,7 @@ export class Ir extends Pane<monaco.editor.IStandaloneCodeEditor, IrState> {
         }
 
         const lineClassName = isSignalFromAnotherPane ? 'linked-code-decoration-line' : '';
-        const linkedLineDecorations: monaco.editor.IModelDeltaDecoration[] = lineNumbers.map((line) => ({
+        const linkedLineDecorations: monaco.editor.IModelDeltaDecoration[] = lineNumbers.map(line => ({
             range: new monaco.Range(line, 1, line, 1),
             options: {
                 isWholeLine: true,
@@ -226,47 +541,40 @@ export class Ir extends Pane<monaco.editor.IStandaloneCodeEditor, IrState> {
                 className: lineClassName,
             },
         }));
-        const directlyLinkedLineDecorations: monaco.editor.IModelDeltaDecoration[] =
-            directlyLinkedLineNumbers.map((line) => ({
+        const directlyLinkedLineDecorations: monaco.editor.IModelDeltaDecoration[] = directlyLinkedLineNumbers.map(
+            line => ({
                 range: new monaco.Range(line, 1, line, 1),
                 options: {
                     isWholeLine: true,
                     inlineClassName: 'linked-code-decoration-column',
                 },
-            }));
+            }),
+        );
         this.decorations.linkedCode = [...linkedLineDecorations, ...directlyLinkedLineDecorations];
 
-        if (this.linkedFadeTimeoutId !== -1) {
-            clearTimeout(this.linkedFadeTimeoutId);
+        if (!this.settings.indefiniteLineHighlight) {
+            if (this.linkedFadeTimeoutId !== null) {
+                clearTimeout(this.linkedFadeTimeoutId);
+            }
+
+            this.linkedFadeTimeoutId = setTimeout(() => {
+                this.clearLinkedLines();
+                this.linkedFadeTimeoutId = null;
+            }, 5000);
         }
-        // @ts-expect-error mismatched type on setTimeout, assumes NodeJS.Timeout
-        this.linkedFadeTimeoutId = setTimeout(() => {
-            this.clearLinkedLines();
-            this.linkedFadeTimeoutId = -1;
-        }, 5000);
         this.updateDecorations();
     }
 
     updateDecorations(): void {
         this.previousDecorations = this.editor.deltaDecorations(
-            this.previousDecorations, _.flatten(_.values(this.decorations)));
+            this.previousDecorations,
+            _.flatten(_.values(this.decorations)),
+        );
     }
 
     clearLinkedLines(): void {
         this.decorations.linkedCode = [];
         this.updateDecorations();
-    }
-
-    /** LLVM IR View proxies some things in the standard callbacks */
-    override registerStandardCallbacks(): void {
-        this.fontScale.on('change', this.updateState.bind(this));
-        this.container.on('destroy', this.close.bind(this));
-        this.container.on('resize', this.resize.bind(this));
-        this.eventHub.on('compiler', this.onCompiler.bind(this));
-        this.eventHub.on('compilerClose', this.onCompilerClose.bind(this));
-        this.eventHub.on('settingsChange', this.onSettingsChange.bind(this));
-        this.eventHub.on('shown', this.resize.bind(this));
-        this.eventHub.on('resize', this.resize.bind(this));
     }
 
     override close(): void {

@@ -22,47 +22,45 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-'use strict';
+import * as monaco from 'monaco-editor';
 
-const monaco = require('monaco-editor');
-
-function definition() {
+function definition(): monaco.languages.IMonarchLanguage {
     return {
         tokenizer: {
             root: [
-                [/^[a-zA-Z_][a-zA-Z_0-9]*/, { token: 'type.identifier' }],
-                [/^\s+/, { token: 'whitespace', next: '@opcode' }],
-                [/^\.[a-zA-Z]+\s*/, { token: 'type.identifier', next: '@arguments' }],
-                [/;.*$/, { token: 'comment', next: '@root' }],
-                [/\s*,\s*/, { token: 'delimiter', next: '@arguments' }],
+                [/^[a-zA-Z_][a-zA-Z_0-9]*/, {token: 'type.identifier'}],
+                [/^\s+/, {token: 'whitespace', next: '@opcode'}],
+                [/^\.[a-zA-Z]+\s*/, {token: 'type.identifier', next: '@arguments'}],
+                [/;.*$/, {token: 'comment', next: '@root'}],
+                [/\s*,\s*/, {token: 'delimiter', next: '@arguments'}],
             ],
 
             opcode: [
-                [/[a-zA-Z]+$/, { token: 'keyword', next: '@root' }],
-                [/[a-zA-Z]+\s*/, { token: 'keyword', next: '@arguments' }],
-                [/;.*$/, { token: 'comment', next: '@root' }],
+                [/[a-zA-Z]+$/, {token: 'keyword', next: '@root'}],
+                [/[a-zA-Z]+\s*/, {token: 'keyword', next: '@arguments'}],
+                [/;.*$/, {token: 'comment', next: '@root'}],
             ],
 
             arguments: [
-                [/\$#[0-9a-fA-F]+/, { token: 'number', next: '@root' }],
-                [/\$[0-9a-fA-F]+/, { token: 'number', next: '@root' }],
-                [/#\$[0-9a-fA-F]+/, { token: 'number', next: '@root' }],
-                [/#<[0-9]+\(%[a-zA-Z]+\)/, { token: 'number', next: '@root' }],
-                [/#>[0-9]+\(%[a-zA-Z]+\)/, { token: 'number', next: '@root' }],
-                [/#<\$[0-9a-fA-F]+/, { token: 'number', next: '@root' }],
-                [/#>\$[0-9a-fA-F]+/, { token: 'number', next: '@root' }],
-                [/#%[0-1]+/, { token: 'number', next: '@root' }],
-                [/#[0-9]+/, { token: 'number', next: '@root' }],
-                [/[a-zA-Z_][a-zA-Z_0-9]*/, { token: 'type.identifier', next: '@root' }],
-                [/[0-9]+/, { token: 'number', next: '@root' }],
-                [/;.*$/, { token: 'comment', next: '@root' }],
+                [/\$#[0-9a-fA-F]+/, {token: 'number', next: '@root'}],
+                [/\$[0-9a-fA-F]+/, {token: 'number', next: '@root'}],
+                [/#\$[0-9a-fA-F]+/, {token: 'number', next: '@root'}],
+                [/#<[0-9]+\(%[a-zA-Z]+\)/, {token: 'number', next: '@root'}],
+                [/#>[0-9]+\(%[a-zA-Z]+\)/, {token: 'number', next: '@root'}],
+                [/#<\$[0-9a-fA-F]+/, {token: 'number', next: '@root'}],
+                [/#>\$[0-9a-fA-F]+/, {token: 'number', next: '@root'}],
+                [/#%[0-1]+/, {token: 'number', next: '@root'}],
+                [/#[0-9]+/, {token: 'number', next: '@root'}],
+                [/[a-zA-Z_][a-zA-Z_0-9]*/, {token: 'type.identifier', next: '@root'}],
+                [/[0-9]+/, {token: 'number', next: '@root'}],
+                [/;.*$/, {token: 'comment', next: '@root'}],
             ],
         },
     };
 }
 
 const def = definition();
-monaco.languages.register({ id: 'asm6502' });
+monaco.languages.register({id: 'asm6502'});
 monaco.languages.setMonarchTokensProvider('asm6502', def);
 
-export = def;
+export default def;

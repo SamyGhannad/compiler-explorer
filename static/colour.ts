@@ -23,44 +23,85 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 import * as monaco from 'monaco-editor';
+import {Themes} from './themes.js';
 
-export type AppTheme = 'default' | 'dark' | 'all';
+export type ColourScheme =
+    | 'rainbow'
+    | 'rainbow2'
+    | 'earth'
+    | 'green-blue'
+    | 'gray-shade'
+    | 'rainbow-dark'
+    | 'soft-rainbow-dark'
+    | 'pink';
 
-interface ColourScheme {
-    name: string;
+export type AppTheme = Themes | 'all';
+
+export interface ColourSchemeInfo {
+    name: ColourScheme;
     desc: string;
     count: number;
     themes: AppTheme[];
 }
 
 // If you want to use a scheme in every theme, set `theme: ['all']`
-export const schemes: ColourScheme[] = [
+export const schemes: ColourSchemeInfo[] = [
     {name: 'rainbow', desc: 'Rainbow 1', count: 12, themes: ['default']},
     {name: 'rainbow2', desc: 'Rainbow 2', count: 12, themes: ['default']},
-    {name: 'earth', desc: 'Earth tones (colourblind safe)', count: 9, themes: ['default']},
-    {name: 'green-blue', desc: 'Greens and blues (colourblind safe)', count: 4, themes: ['default']},
-    {name: 'gray-shade', desc: 'Gray shades', count: 4, themes: ['dark']},
-    {name: 'rainbow-dark', desc: 'Dark Rainbow', count: 12, themes: ['dark']},
+    {
+        name: 'earth',
+        desc: 'Earth tones (colourblind safe)',
+        count: 9,
+        themes: ['default'],
+    },
+    {
+        name: 'green-blue',
+        desc: 'Greens and blues (colourblind safe)',
+        count: 4,
+        themes: ['default'],
+    },
+    {
+        name: 'gray-shade',
+        desc: 'Gray shades',
+        count: 4,
+        themes: ['dark', 'darkplus', 'real-dark', 'onedark'],
+    },
+    {
+        name: 'rainbow-dark',
+        desc: 'Dark Rainbow',
+        count: 12,
+        themes: ['dark', 'darkplus', 'real-dark', 'onedark'],
+    },
+    {
+        name: 'soft-rainbow-dark',
+        desc: 'Soft Dark Rainbow',
+        count: 11,
+        themes: ['dark', 'darkplus', 'real-dark', 'onedark'],
+    },
+    {
+        name: 'pink',
+        desc: 'Pink',
+        count: 5,
+        themes: ['pink'],
+    },
 ];
 
 export function applyColours(
-    editor: monaco.editor.ICodeEditor,
     colours: Record<number, number>,
     schemeName: string,
-    previousDecorations: string[]
-): string[] {
-    const scheme = schemes.find((scheme) => scheme.name === schemeName) ?? schemes[0];
-    const newDecorations: monaco.editor.IModelDeltaDecoration[] = Object.entries(colours)
-        .map(([line, index]) => {
-            const realLineNumber = parseInt(line) + 1;
-            return {
-                range: new monaco.Range(realLineNumber, 1, realLineNumber, 1),
-                options: {
-                    isWholeLine: true,
-                    className: 'line-linkage ' + scheme.name + '-' + (index % scheme.count),
-                },
-            };
-        });
+    editorDecorations: monaco.editor.IEditorDecorationsCollection,
+): void {
+    const scheme = schemes.find(scheme => scheme.name === schemeName) ?? schemes[0];
+    const newDecorations: monaco.editor.IModelDeltaDecoration[] = Object.entries(colours).map(([line, index]) => {
+        const realLineNumber = Number.parseInt(line) + 1;
+        return {
+            range: new monaco.Range(realLineNumber, 1, realLineNumber, 1),
+            options: {
+                isWholeLine: true,
+                className: 'line-linkage ' + scheme.name + '-' + (index % scheme.count),
+            },
+        };
+    });
 
-    return editor.deltaDecorations(previousDecorations, newDecorations);
+    editorDecorations.set(newDecorations);
 }

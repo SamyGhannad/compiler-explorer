@@ -1,32 +1,34 @@
 name: Compiler Explorer on Windows
 
-on: [ push ]
+on: [push, pull_request]
 
 jobs:
-  build-and-test:
+  test:
     runs-on: windows-2019
 
     steps:
-      - uses: actions/checkout@v2
+      - name: Ask Git to use LF line endings
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Use Node.js 14.x
-        uses: actions/setup-node@v1
+      - name: Use Node.js 22.x
+        uses: actions/setup-node@v4
         with:
-          node-version: 14.x
-      - name: Get npm cache directory
-        id: npm-cache
-        run: |
-          echo "::set-output name=dir::$(npm config get cache)"
-      - uses: actions/cache@v1
-        with:
-          path: ${{ steps.npm-cache.outputs.dir }}
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
+          node-version: 22.x
+          check-latest: true
+          cache: npm
       - name: Install prerequisites
         run: make prereqs
-      - name: Build and test
-        run: |
-          npm run lint
-          npm run ci-test
+      - name: Lint
+        run: npm run lint-check
+        shell: cmd
+      - name: Typescript check
+        run: npm run ts-check
+        shell: cmd
+      - name: Test
+        run: npm run test
+        shell: cmd

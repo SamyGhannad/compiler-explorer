@@ -22,34 +22,66 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-export interface LibraryVersion {
+import {CompilerInfo} from '../types/compiler.interfaces.js';
+import {Language, LanguageKey} from '../types/languages.interfaces.js';
+import {Tool} from '../types/tool.interfaces.js';
+
+export type LibraryVersion = {
     alias: string[];
     hidden: boolean;
     libId: string;
     used: boolean;
     version?: string;
-}
+    lookupname?: string;
+    lookupversion?: string;
+};
 
-export interface Library {
+export type Library = {
     dependencies: string[];
     description?: string;
-    examples: string[];
+    examples?: string[];
     name?: string;
     url?: string;
     versions: Record<string, LibraryVersion>;
-}
+};
 
 export type LanguageLibs = Record<string, Library>;
 
 export type Libs = Record<string, LanguageLibs>;
 
-export interface Options {
+export type LibsPerRemote = Record<string, LanguageLibs>;
+
+// TODO: Is this the same as OptionsType in lib/options-handler.ts?
+export type Options = {
     libs: Libs;
-    // TODO: Constraint this type
-    languages: Record<string, any>[];
-    defaultLibs: Record<string, string | null>;
+    remoteLibs: LibsPerRemote;
+    languages: Partial<Record<LanguageKey, Language>>;
+    compilers: CompilerInfo[];
+    defaultCompiler: Record<LanguageKey, string>;
+    defaultLibs: Record<LanguageKey, string | null>;
     defaultFontScale: number;
     sentryDsn?: string;
     release?: string;
-    sentryEnvironment?: string
-}
+    sentryEnvironment?: string;
+    compileOptions: Record<LanguageKey, string>;
+    tools: Record<LanguageKey, Record<string, Tool>>;
+    slides?: any[];
+    cookieDomainRe: string;
+    motdUrl: string;
+    pageloadUrl: string;
+    mobileViewer: boolean;
+    readOnly: boolean;
+    policies: {
+        cookies: {
+            enabled: boolean;
+            key: string;
+        };
+        privacy: {
+            enabled: boolean;
+            key: string;
+        };
+    };
+    supportsExecute: boolean;
+    supportsLibraryCodeFilter: boolean;
+    cvCompilerCountMax: number;
+};

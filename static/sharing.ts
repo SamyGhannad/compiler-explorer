@@ -22,24 +22,25 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import $ from 'jquery';
-import Sentry from '@sentry/browser';
-import GoldenLayout from 'golden-layout';
-import _ from 'underscore';
 import ClipboardJS from 'clipboard';
+import GoldenLayout from 'golden-layout';
+import $ from 'jquery';
+import _ from 'underscore';
+import {sessionThenLocalStorage} from './local.js';
+import {options} from './options.js';
+import * as url from './url.js';
 
 import ClickEvent = JQuery.ClickEvent;
 import TriggeredEvent = JQuery.TriggeredEvent;
+import {SentryCapture} from './sentry.js';
+import {Settings, SiteSettings} from './settings.js';
 
-const ga = require('./analytics').ga;
-const options = require('./options').options;
-const url = require('./url');
 const cloneDeep = require('lodash.clonedeep');
 
 enum LinkType {
-    Short,
-    Full,
-    Embed
+    Short = 0,
+    Full = 1,
+    Embed = 2,
 }
 
 const shareServices = {
@@ -47,22 +48,36 @@ const shareServices = {
         embedValid: false,
         logoClass: 'fab fa-twitter',
         cssClass: 'share-twitter',
-        getLink: (title, url) => {
-            return 'https://twitter.com/intent/tweet' +
+        getLink: (title: string, url: string) => {
+            return (
+                'https://twitter.com/intent/tweet' +
                 `?text=${encodeURIComponent(title)}` +
                 `&url=${encodeURIComponent(url)}` +
-                '&via=CompileExplore';
+                '&via=CompileExplore'
+            );
         },
         text: 'Tweet',
+    },
+    bluesky: {
+        embedValid: false,
+        logoClass: 'fab fa-bluesky',
+        cssClass: 'share-bluesky',
+        getLink: (title: string, url: string) => {
+            const text = `${title} ${url} via @compiler-explorer.com`;
+            return `https://bsky.app/intent/compose?text=${encodeURIComponent(text)}`;
+        },
+        text: 'Share on Bluesky',
     },
     reddit: {
         embedValid: false,
         logoClass: 'fab fa-reddit',
         cssClass: 'share-reddit',
-        getLink: (title, url) => {
-            return 'http://www.reddit.com/submit' +
+        getLink: (title: string, url: string) => {
+            return (
+                'http://www.reddit.com/submit' +
                 `?url=${encodeURIComponent(url)}` +
-                `&title=${encodeURIComponent(title)}`;
+                `&title=${encodeURIComponent(title)}`
+            );
         },
         text: 'Share on Reddit',
     },
@@ -77,7 +92,9 @@ export class Sharing {
     private shareFull: JQuery;
     private shareEmbed: JQuery;
 
-    private clippyButton: ClipboardJS;
+    private settings: SiteSettings;
+
+    private clippyButton: ClipboardJS | null;
 
     constructor(layout: any) {
         this.layout = layout;
@@ -87,6 +104,8 @@ export class Sharing {
         this.shareShort = $('#shareShort');
         this.shareFull = $('#shareFull');
         this.shareEmbed = $('#shareEmbed');
+
+        this.settings = Settings.getStoredSettings();
 
         this.clippyButton = null;
 
@@ -103,15 +122,33 @@ export class Sharing {
         });
         this.layout.on('stateChanged', this.onStateChanged.bind(this));
 
-        $('#sharelinkdialog').on('show.bs.modal', this.onOpenModalPane.bind(this))
+        $('#sharelinkdialog')
+            .on('show.bs.modal', this.onOpenModalPane.bind(this))
             .on('hidden.bs.modal', this.onCloseModalPane.bind(this));
+
+        this.layout.eventHub.on('settingsChange', (newSettings: SiteSettings) => {
+            this.settings = newSettings;
+        });
+
+        $(window).on('blur', async () => {
+            sessionThenLocalStorage.set('gl', JSON.stringify(this.layout.toConfig()));
+            if (this.settings.keepMultipleTabs) {
+                try {
+                    const link = await this.getLinkOfType(LinkType.Full);
+                    window.history.replaceState(null, '', link);
+                } catch (e) {
+                    // This is probably caused by a link that is too long
+                    SentryCapture(e, 'url update');
+                }
+            }
+        });
     }
 
     private onStateChanged(): void {
         const config = Sharing.filterComponentState(this.layout.toConfig());
         this.ensureUrlIsNotOutdated(config);
         if (options.embedded) {
-            const strippedToLast = window.location.pathname.substr(0, window.location.pathname.lastIndexOf('/') + 1);
+            const strippedToLast = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
             $('a.link').prop('href', strippedToLast + '#' + url.serialiseState(config));
         }
     }
@@ -120,7 +157,7 @@ export class Sharing {
         const stringifiedConfig = JSON.stringify(config);
         if (stringifiedConfig !== this.lastState) {
             if (this.lastState != null && window.location.pathname !== window.httpRoot) {
-                window.history.replaceState(null, null, window.httpRoot);
+                window.history.replaceState(null, '', window.httpRoot);
             }
             this.lastState = stringifiedConfig;
         }
@@ -128,10 +165,14 @@ export class Sharing {
 
     private static bindToLinkType(bind: string): LinkType {
         switch (bind) {
-            case 'Full': return LinkType.Full;
-            case 'Short': return LinkType.Short;
-            case 'Embed': return LinkType.Embed;
-            default: return LinkType.Full;
+            case 'Full':
+                return LinkType.Full;
+            case 'Short':
+                return LinkType.Short;
+            case 'Embed':
+                return LinkType.Embed;
+            default:
+                return LinkType.Full;
         }
     }
 
@@ -143,6 +184,7 @@ export class Sharing {
         const socialSharingElements = modal.find('.socialsharing');
         const permalink = modal.find('.permalink');
         const embedsettings = modal.find('#embedsettings');
+        const clipboardButton = modal.find('.clippy');
 
         const updatePermaLink = () => {
             socialSharingElements.empty();
@@ -150,13 +192,14 @@ export class Sharing {
             Sharing.getLinks(config, currentBind, (error: any, newUrl: string, extra: string, updateState: boolean) => {
                 permalink.off('click');
                 if (error || !newUrl) {
-                    permalink.prop('disabled', true);
+                    clipboardButton.prop('disabled', true);
                     permalink.val(error || 'Error providing URL');
-                    Sentry.captureException(error);
+                    SentryCapture(error, 'Error providing url');
                 } else {
                     if (updateState) {
                         Sharing.storeCurrentConfig(config, extra);
                     }
+                    clipboardButton.prop('disabled', false);
                     permalink.val(newUrl);
                     permalink.on('click', () => {
                         permalink.trigger('focus').trigger('select');
@@ -165,27 +208,29 @@ export class Sharing {
                         Sharing.updateShares(socialSharingElements, newUrl);
                         // Disable the links for every share item which does not support embed html as links
                         if (currentBind === LinkType.Embed) {
-                            socialSharingElements.children('.share-no-embeddable')
-                                .hide()
-                                .on('click', false);
+                            socialSharingElements.children('.share-no-embeddable').hide().on('click', false);
                         }
                     }
                 }
             });
         };
 
-        this.clippyButton = new ClipboardJS(modal.find('button.clippy').get(0));
-        this.clippyButton.on('success', (e) => {
-            this.displayTooltip(permalink, 'Link copied to clipboard');
-            e.clearSelection();
-        });
-        this.clippyButton.on('error', (e) => {
-            this.displayTooltip(permalink, 'Error copying to clipboard');
-        });
+        const clippyElement = modal.find('button.clippy').get(0);
+        if (clippyElement != null) {
+            this.clippyButton = new ClipboardJS(clippyElement);
+            this.clippyButton.on('success', e => {
+                this.displayTooltip(permalink, 'Link copied to clipboard');
+                e.clearSelection();
+            });
+            this.clippyButton.on('error', e => {
+                this.displayTooltip(permalink, 'Error copying to clipboard');
+            });
+        }
 
         if (currentBind === LinkType.Embed) {
             embedsettings.show();
-            embedsettings.find('input')
+            embedsettings
+                .find('input')
                 // Off any prev click handlers to avoid multiple events triggering after opening the modal more than once
                 .off('click')
                 .on('click', () => updatePermaLink());
@@ -194,12 +239,6 @@ export class Sharing {
         }
 
         updatePermaLink();
-
-        ga.proxy('send', {
-            hitType: 'event',
-            eventCategory: 'OpenModalPane',
-            eventAction: 'Sharing',
-        });
     }
 
     private onCloseModalPane(): void {
@@ -214,9 +253,9 @@ export class Sharing {
         const shareFullCopyToClipBtn = this.shareFull.find('.clip-icon');
         const shareEmbedCopyToClipBtn = this.shareEmbed.find('.clip-icon');
 
-        shareShortCopyToClipBtn.on('click', (e) => this.onClipButtonPressed(e, LinkType.Short));
-        shareFullCopyToClipBtn.on('click', (e) => this.onClipButtonPressed(e, LinkType.Full));
-        shareEmbedCopyToClipBtn.on('click', (e) => this.onClipButtonPressed(e, LinkType.Embed));
+        shareShortCopyToClipBtn.on('click', e => this.onClipButtonPressed(e, LinkType.Short));
+        shareFullCopyToClipBtn.on('click', e => this.onClipButtonPressed(e, LinkType.Full));
+        shareEmbedCopyToClipBtn.on('click', e => this.onClipButtonPressed(e, LinkType.Embed));
 
         if (options.sharingEnabled) {
             Sharing.updateShares($('#socialshare'), window.location.protocol + '//' + window.location.hostname);
@@ -224,7 +263,7 @@ export class Sharing {
     }
 
     private onClipButtonPressed(event: ClickEvent, type: LinkType): void {
-        // Dont let the modal show up.
+        // Don't let the modal show up.
         // We need this because the button is a child of the dropdown-item with a data-toggle=modal
         if (Sharing.isNavigatorClipboardAvailable()) {
             event.stopPropagation();
@@ -234,12 +273,30 @@ export class Sharing {
         }
     }
 
+    private getLinkOfType(type: LinkType): Promise<string> {
+        const config = this.layout.toConfig();
+        return new Promise<string>((resolve, reject) => {
+            Sharing.getLinks(config, type, (error: any, newUrl: string, extra: string, updateState: boolean) => {
+                if (error || !newUrl) {
+                    this.displayTooltip(this.share, 'Oops, something went wrong');
+                    SentryCapture(error, 'Getting short link failed');
+                    reject();
+                } else {
+                    if (updateState) {
+                        Sharing.storeCurrentConfig(config, extra);
+                    }
+                    resolve(newUrl);
+                }
+            });
+        });
+    }
+
     private copyLinkTypeToClipboard(type: LinkType): void {
         const config = this.layout.toConfig();
         Sharing.getLinks(config, type, (error: any, newUrl: string, extra: string, updateState: boolean) => {
             if (error || !newUrl) {
                 this.displayTooltip(this.share, 'Oops, something went wrong');
-                Sentry.captureException(error);
+                SentryCapture(error, 'Getting short link failed');
             } else {
                 if (updateState) {
                     Sharing.storeCurrentConfig(config, extra);
@@ -277,7 +334,8 @@ export class Sharing {
 
     private doLinkCopyToClipboard(type: LinkType, link: string): void {
         if (Sharing.isNavigatorClipboardAvailable()) {
-            navigator.clipboard.writeText(link)
+            navigator.clipboard
+                .writeText(link)
                 .then(() => this.displayTooltip(this.share, 'Link copied to clipboard'))
                 .catch(() => this.openShareModalForType(type));
         } else {
@@ -287,11 +345,6 @@ export class Sharing {
 
     public static getLinks(config: any, currentBind: LinkType, done: CallableFunction): void {
         const root = window.httpRoot;
-        ga.proxy('send', {
-            hitType: 'event',
-            eventCategory: 'CreateShareLink',
-            eventAction: 'Sharing',
-        });
         switch (currentBind) {
             case LinkType.Short:
                 Sharing.getShortLink(config, root, done);
@@ -300,7 +353,7 @@ export class Sharing {
                 done(null, window.location.origin + root + '#' + url.serialiseState(config), false);
                 return;
             case LinkType.Embed: {
-                const options = {};
+                const options: Record<string, boolean> = {};
                 $('#sharelinkdialog input:checked').each((i, element) => {
                     options[$(element).prop('class')] = true;
                 });
@@ -321,14 +374,14 @@ export class Sharing {
         $.ajax({
             type: 'POST',
             url: window.location.origin + root + 'api/shortener',
-            dataType: 'json',  // Expected
-            contentType: 'application/json',  // Sent
+            dataType: 'json', // Expected
+            contentType: 'application/json', // Sent
             data: data,
             success: (result: any) => {
                 const pushState = useExternalShortener ? null : result.url;
                 done(null, result.url, pushState, true);
             },
-            error: (err) => {
+            error: err => {
                 // Notify the user that we ran into trouble?
                 done(err.statusText, null, false);
             },
@@ -336,22 +389,32 @@ export class Sharing {
         });
     }
 
-    private static getEmbeddedHtml(config, root, isReadOnly, extraOptions): string {
+    private static getEmbeddedHtml(
+        config: any,
+        root: string,
+        isReadOnly: boolean,
+        extraOptions: Record<string, boolean>,
+    ): string {
         const embedUrl = Sharing.getEmbeddedUrl(config, root, isReadOnly, extraOptions);
+        // The attributes must be double quoted, the full url's rison contains single quotes
         return `<iframe width="800px" height="200px" src="${embedUrl}"></iframe>`;
     }
 
     private static getEmbeddedUrl(config: any, root: string, readOnly: boolean, extraOptions: object): string {
         const location = window.location.origin + root;
-        const parameters = _.reduce(extraOptions, (total, value, key): string => {
-            if (total === '') {
-                total = '?';
-            } else {
-                total += '&';
-            }
+        const parameters = _.reduce(
+            extraOptions,
+            (total, value, key): string => {
+                if (total === '') {
+                    total = '?';
+                } else {
+                    total += '&';
+                }
 
-            return total + key + '=' + value;
-        }, '');
+                return total + key + '=' + value;
+            },
+            '',
+        );
 
         const path = (readOnly ? 'embed-ro' : 'e') + parameters + '#';
 
@@ -359,11 +422,11 @@ export class Sharing {
     }
 
     private static storeCurrentConfig(config: any, extra: string): void {
-        window.history.pushState(null, null, extra);
+        window.history.pushState(null, '', extra);
     }
 
     private static isNavigatorClipboardAvailable(): boolean {
-        return navigator.clipboard != null;
+        return (navigator.clipboard as Clipboard | undefined) !== undefined;
     }
 
     public static filterComponentState(config: any, keysToRemove: [string] = ['selection']): any {
@@ -376,8 +439,8 @@ export class Sharing {
 
             if (component.componentState) {
                 Object.keys(component.componentState)
-                    .filter((e) => keysToRemove.includes(e))
-                    .forEach((key) => delete component.componentState[key]);
+                    .filter(e => keysToRemove.includes(e))
+                    .forEach(key => delete component.componentState[key]);
             }
         }
 
@@ -391,15 +454,12 @@ export class Sharing {
         _.each(shareServices, (service, serviceName) => {
             const newElement = baseTemplate.children('a.share-item').clone();
             if (service.logoClass) {
-                newElement.prepend($('<span>')
-                    .addClass('dropdown-icon mr-1')
-                    .addClass(service.logoClass)
-                    .prop('title', serviceName)
+                newElement.prepend(
+                    $('<span>').addClass('dropdown-icon mr-1').addClass(service.logoClass).prop('title', serviceName),
                 );
             }
             if (service.text) {
-                newElement.children('span.share-item-text')
-                    .text(service.text);
+                newElement.children('span.share-item-text').text(service.text);
             }
             newElement
                 .prop('href', service.getLink('Compiler Explorer', url))

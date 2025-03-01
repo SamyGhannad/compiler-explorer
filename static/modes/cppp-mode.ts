@@ -22,29 +22,32 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-'use strict';
-const monaco = require('monaco-editor');
-const cpp = require('monaco-editor/esm/vs/basic-languages/cpp/cpp');
+import $ from 'jquery';
+
+import * as monaco from 'monaco-editor';
+
+// @ts-ignore  "Could not find a declaration file"
+import * as cpp from 'monaco-editor/esm/vs/basic-languages/cpp/cpp';
 
 // We need to create a new definition for cpp so we can remove invalid keywords
 
-function definition() {
+function definition(): monaco.languages.IMonarchLanguage {
     const cppp = $.extend(true, {}, cpp.language); // deep copy
 
-    function removeKeyword(keyword) {
+    function removeKeyword(keyword: string) {
         const index = cppp.keywords.indexOf(keyword);
         if (index > -1) {
             cppp.keywords.splice(index, 1);
         }
     }
 
-    function removeKeywords(keywords) {
+    function removeKeywords(keywords: string[]) {
         for (let i = 0; i < keywords.length; ++i) {
             removeKeyword(keywords[i]);
         }
     }
 
-    function addKeywords(keywords) {
+    function addKeywords(keywords: string[]) {
         // (Ruben) Done one by one as if you just push them all, Monaco complains that they're not strings, but as
         // far as I can tell, they indeed are all strings. This somehow fixes it. If you know how to fix it, plz go
         for (let i = 0; i < keywords.length; ++i) {
@@ -54,13 +57,64 @@ function definition() {
 
     // We remove everything that's not an identifier, underscore reserved name and not an official C++ keyword...
     // Regarding #617, final is a identifier with special meaning, not a fully qualified keyword
-    removeKeywords(['abstract', 'amp', 'array', 'cpu', 'delegate', 'each', 'event', 'finally', 'gcnew',
-        'generic', 'in', 'initonly', 'interface', 'interior_ptr', 'internal', 'literal', 'partial', 'pascal',
-        'pin_ptr', 'property', 'ref', 'restrict', 'safe_cast', 'sealed', 'title_static', 'where']);
+    removeKeywords([
+        'abstract',
+        'amp',
+        'array',
+        'cpu',
+        'delegate',
+        'each',
+        'event',
+        'finally',
+        'gcnew',
+        'generic',
+        'in',
+        'initonly',
+        'interface',
+        'interior_ptr',
+        'internal',
+        'literal',
+        'partial',
+        'pascal',
+        'pin_ptr',
+        'property',
+        'ref',
+        'restrict',
+        'safe_cast',
+        'sealed',
+        'title_static',
+        'where',
+    ]);
 
-    addKeywords(['alignas', 'alignof', 'and', 'and_eq', 'asm', 'bitand', 'bitor', 'char8_t', 'char16_t',
-        'char32_t', 'compl', 'concept', 'consteval', 'constinit', 'co_await', 'co_return', 'co_yield', 'not', 'not_eq',
-        'or', 'or_eq', 'requires', 'xor', 'xor_eq']);
+    addKeywords([
+        'alignas',
+        'alignof',
+        'and',
+        'and_eq',
+        'asm',
+        'bitand',
+        'bitor',
+        'char8_t',
+        'char16_t',
+        'char32_t',
+        'compl',
+        'concept',
+        'consteval',
+        'constinit',
+        'co_await',
+        'co_return',
+        'co_yield',
+        'export',
+        'import',
+        'module',
+        'not',
+        'not_eq',
+        'or',
+        'or_eq',
+        'requires',
+        'xor',
+        'xor_eq',
+    ]);
 
     return cppp;
 }
@@ -71,4 +125,4 @@ monaco.languages.register({id: 'cppp'});
 monaco.languages.setLanguageConfiguration('cppp', cpp.conf);
 monaco.languages.setMonarchTokensProvider('cppp', def);
 
-export = def;
+export default def;

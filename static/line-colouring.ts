@@ -1,7 +1,32 @@
-import _ from 'underscore';
-import { MultifileService } from './multifile-service';
+// Copyright (c) 2021, Compiler Explorer Authors
+// All rights reserved.
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+//
+//     * Redistributions of source code must retain the above copyright notice,
+//       this list of conditions and the following disclaimer.
+//     * Redistributions in binary form must reproduce the above copyright
+//       notice, this list of conditions and the following disclaimer in the
+//       documentation and/or other materials provided with the distribution.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+// INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+// CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+// ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+// POSSIBILITY OF SUCH DAMAGE.
 
-class ColouredSourcelineInfo {
+import _ from 'underscore';
+import {MultifileService} from './multifile-service.js';
+import {ResultLine} from './resultline/resultline.interfaces.js';
+
+interface ColouredSourcelineInfo {
     sourceLine: number;
     compilerId: number;
     compilerLine: number;
@@ -26,21 +51,21 @@ export class LineColouring {
         this.linesAndColourByEditor = {};
     }
 
-    public addFromAssembly(compilerId, asm) {
+    public addFromAssembly(compilerId: number, asm: ResultLine[]) {
         let asmLineIdx = 0;
-        for (const asmLine of asm ) {
+        for (const asmLine of asm) {
             if (asmLine.source && asmLine.source.line > 0) {
                 const editorId = this.multifileService.getEditorIdByFilename(asmLine.source.file);
-                if (editorId > 0) {
+                if (editorId != null && editorId > 0) {
                     if (!this.colouredSourceLinesByEditor[editorId]) {
                         this.colouredSourceLinesByEditor[editorId] = [];
                     }
 
-                    if (!this.linesAndColourByCompiler[compilerId]) {
+                    if (!(compilerId in this.linesAndColourByCompiler)) {
                         this.linesAndColourByCompiler[compilerId] = {};
                     }
 
-                    if (!this.linesAndColourByEditor[editorId]) {
+                    if (!(editorId in this.linesAndColourByEditor)) {
                         this.linesAndColourByEditor[editorId] = {};
                     }
 
@@ -56,12 +81,11 @@ export class LineColouring {
         }
     }
 
-    private getUniqueLinesForEditor(editorId: number) {
-        const lines = [];
+    private getUniqueLinesForEditor(editorId: number): number[] {
+        const lines: number[] = [];
 
         for (const info of this.colouredSourceLinesByEditor[editorId]) {
-            if (!lines.includes(info.sourceLine))
-                lines.push(info.sourceLine);
+            if (!lines.includes(info.sourceLine)) lines.push(info.sourceLine);
         }
 
         return lines;
@@ -79,7 +103,7 @@ export class LineColouring {
         let colourIdx = 0;
 
         for (const editorIdStr of _.keys(this.colouredSourceLinesByEditor)) {
-            const editorId = parseInt(editorIdStr);
+            const editorId = Number.parseInt(editorIdStr);
 
             const lines = this.getUniqueLinesForEditor(editorId);
             for (const line of lines) {
@@ -92,7 +116,7 @@ export class LineColouring {
         const editorIds = _.keys(this.linesAndColourByEditor);
 
         for (const compilerIdStr of compilerIds) {
-            const compilerId = parseInt(compilerIdStr);
+            const compilerId = Number.parseInt(compilerIdStr);
             for (const editorId of _.keys(this.colouredSourceLinesByEditor)) {
                 for (const info of this.colouredSourceLinesByEditor[editorId]) {
                     if (info.compilerId === compilerId && info.colourIdx >= 0) {
@@ -112,18 +136,16 @@ export class LineColouring {
     }
 
     public getColoursForCompiler(compilerId: number): Record<number, number> {
-        if (this.linesAndColourByCompiler[compilerId]) {
+        if (compilerId in this.linesAndColourByCompiler) {
             return this.linesAndColourByCompiler[compilerId];
-        } else {
-            return {};
         }
+        return {};
     }
 
     public getColoursForEditor(editorId: number): Record<number, number> {
-        if (this.linesAndColourByEditor[editorId]) {
+        if (editorId in this.linesAndColourByEditor) {
             return this.linesAndColourByEditor[editorId];
-        } else {
-            return {};
         }
+        return {};
     }
 }

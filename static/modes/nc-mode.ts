@@ -22,21 +22,78 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-'use strict';
-const monaco = require('monaco-editor');
-const cpp = require('monaco-editor/esm/vs/basic-languages/cpp/cpp');
+import $ from 'jquery';
+
+import * as monaco from 'monaco-editor';
+
+// @ts-ignore  "Could not find a declaration file"
+import * as cpp from 'monaco-editor/esm/vs/basic-languages/cpp/cpp';
 
 // We need to ensure we use proper keywords for the Monaco Editor matcher. Note how
 // https://github.com/Microsoft/monaco-languages/ lacks, as far as I can tell, proper C support. We cheat and use C++
-function definition() {
+function definition(): monaco.languages.IMonarchLanguage {
     const nc = $.extend(true, {}, cpp.language); // deep copy
     // https://en.cppreference.com/w/c/keyword
-    nc.keywords = ['auto', 'break', 'case', 'char', 'const', 'continue', 'default',
-        'do', 'double', 'else', 'enum', 'extern', 'float', 'for', 'goto', 'if', 'inline',
-        'int', 'long', 'register', 'restrict', 'return', 'short', 'signed', 'sizeof', 'static',
-        'struct', 'switch', 'typedef', 'union', 'unsigned', 'void', 'volatile', 'while',
-        '_Alignas', '_Alignof', '_Atomic', '_Bool', '_Complex', '_Generic', '_Imaginary',
-        '_Noreturn', '_Static_assert', '_Thread_local',
+    nc.keywords = [
+        'alignas', // (C23)
+        'alignof', // (C23)
+        'auto',
+        'bool', // (C23)
+        'break',
+        'case',
+        'char',
+        'const',
+        'constexpr', // (C23)
+        'continue',
+        'default',
+        'do',
+        'double',
+        'else',
+        'enum',
+        'extern',
+        'false', // (C23)
+        'float',
+        'for',
+        'goto',
+        'if',
+        'inline', // (C99)
+        'int',
+        'long',
+        'nullptr', // (C23)
+        'register',
+        'restrict', // (C99)
+        'return',
+        'short',
+        'signed',
+        'sizeof',
+        'static',
+        'static_assert', // (C23)
+        'struct',
+        'switch',
+        'thread_local', // (C23)
+        'true', // (C23)
+        'typedef',
+        'typeof', // (C23)
+        'typeof_unqual', // (C23)
+        'union',
+        'unsigned',
+        'void',
+        'volatile',
+        'while',
+        '_Alignas', // (C11)
+        '_Alignof', // (C11)
+        '_Atomic', // (C11)
+        '_BitInt', // (C23)
+        '_Bool', // (C99)
+        '_Complex', // (C99)
+        '_Decimal128', // (C23)
+        '_Decimal32', // (C23)
+        '_Decimal64', // (C23)
+        '_Generic', // (C11)
+        '_Imaginary', // (C99)
+        '_Noreturn', // (C11)
+        '_Static_assert', // (C11)
+        '_Thread_local', // (C11)
     ];
     return nc;
 }
@@ -47,4 +104,4 @@ monaco.languages.register({id: 'nc'});
 monaco.languages.setLanguageConfiguration('nc', cpp.conf);
 monaco.languages.setMonarchTokensProvider('nc', def);
 
-export = def;
+export default def;
