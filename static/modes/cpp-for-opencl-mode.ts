@@ -22,17 +22,21 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-'use strict';
-const monaco = require('monaco-editor');
-const cpp = require('monaco-editor/esm/vs/basic-languages/cpp/cpp');
-const cppp = require('./cppp-mode');
+import $ from 'jquery';
+
+import * as monaco from 'monaco-editor';
+
+// @ts-ignore  "Could not find a declaration file"
+import * as cpp from 'monaco-editor/esm/vs/basic-languages/cpp/cpp';
+
+import cppp from './cppp-mode.js';
 
 // We need to create a new definition for C++ for OpenCL so we can remove invalid keywords
 
-function definition() {
+function definition(): monaco.languages.IMonarchLanguage {
     const cppForOpenCL = $.extend(true, {}, cppp); // deep copy
 
-    function addKeywords(keywords) {
+    function addKeywords(keywords: string[]) {
         // (Ruben) Done one by one as if you just push them all, Monaco complains that they're not strings, but as
         // far as I can tell, they indeed are all strings. This somehow fixes it. If you know how to fix it, plz go
         for (let i = 0; i < keywords.length; ++i) {
@@ -40,23 +44,55 @@ function definition() {
         }
     }
 
-    function vectorTypes(basename) {
+    function vectorTypes(basename: string) {
         return [basename + '2', basename + '3', basename + '4', basename + '8', basename + '16'];
     }
     // Keywords for C++ for OpenCL
     addKeywords([
-        '__global', 'global', '__local', 'local', '__constant', 'constant', '__private', 'private',
-        '__generic', 'generic',
-        '__kernel', 'kernel',
-        'uniform', 'pipe',
-        '__read_only', 'read_only', '__write_only', 'write_only', '__read_write', 'read_write',
-        'bool', 'uchar', 'ushort', 'uint', 'ulong',
-        'cl_mem_fence_flags', 'event_t', 'reserve_id_t', 'ndrange_t', 'queue_t',
-        'image2d_t', 'image3d_t', 'image2d_array_t', 'image1d_t', 'image1d_array_t',
-        'image2d_depth_t', 'image1d_buffer_t', 'image2d_array_depth_t',
+        '__global',
+        'global',
+        '__local',
+        'local',
+        '__constant',
+        'constant',
+        '__private',
+        'private',
+        '__generic',
+        'generic',
+        '__kernel',
+        'kernel',
+        'uniform',
+        'pipe',
+        '__read_only',
+        'read_only',
+        '__write_only',
+        'write_only',
+        '__read_write',
+        'read_write',
+        'bool',
+        'uchar',
+        'ushort',
+        'uint',
+        'ulong',
+        'cl_mem_fence_flags',
+        'event_t',
+        'reserve_id_t',
+        'ndrange_t',
+        'queue_t',
+        'image2d_t',
+        'image3d_t',
+        'image2d_array_t',
+        'image1d_t',
+        'image1d_array_t',
+        'image2d_depth_t',
+        'image1d_buffer_t',
+        'image2d_array_depth_t',
         'sampler_t',
-        'uintptr_t', 'intptr_t', 'ptrdiff_t',
-        'size_t']);
+        'uintptr_t',
+        'intptr_t',
+        'ptrdiff_t',
+        'size_t',
+    ]);
     addKeywords(vectorTypes('char'));
     addKeywords(vectorTypes('short'));
     addKeywords(vectorTypes('int'));
@@ -77,5 +113,3 @@ function definition() {
 monaco.languages.register({id: 'cpp-for-opencl'});
 monaco.languages.setLanguageConfiguration('cpp-for-opencl', cpp.conf);
 monaco.languages.setMonarchTokensProvider('cpp-for-opencl', definition());
-
-export {};

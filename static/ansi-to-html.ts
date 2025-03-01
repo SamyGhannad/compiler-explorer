@@ -1,5 +1,3 @@
-/* eslint-disable header/header */
-
 // Copyright (c) 2012 Rob Burns
 //
 // Permission is hereby granted, free of charge, to any person
@@ -28,7 +26,9 @@
 // Converted to typescript by MarkusJx
 
 import _ from 'underscore';
-import { AnsiToHtmlOptions, ColorCodes } from './ansi-to-html.interfaces';
+import {escapeHTML, isString} from '../shared/common-utils.js';
+import {AnsiToHtmlOptions, ColorCodes} from './ansi-to-html.interfaces.js';
+import {assert, unwrap} from './assert.js';
 
 const defaults: AnsiToHtmlOptions = {
     fg: '#FFF',
@@ -41,33 +41,33 @@ const defaults: AnsiToHtmlOptions = {
 
 function getDefaultColors(): ColorCodes {
     const colors: ColorCodes = {
-        0: '#000',
-        1: '#A00',
-        2: '#0A0',
-        3: '#A50',
-        4: '#00A',
-        5: '#A0A',
-        6: '#0AA',
-        7: '#AAA',
-        8: '#555',
-        9: '#F55',
-        10: '#5F5',
-        11: '#FF5',
-        12: '#55F',
-        13: '#F5F',
-        14: '#5FF',
-        15: '#FFF',
+        0: 'var(--terminal-black)',
+        1: 'var(--terminal-red)',
+        2: 'var(--terminal-green)',
+        3: 'var(--terminal-yellow)',
+        4: 'var(--terminal-blue)',
+        5: 'var(--terminal-magenta)',
+        6: 'var(--terminal-cyan)',
+        7: 'var(--terminal-white)',
+        8: 'var(--terminal-bright-black)',
+        9: 'var(--terminal-bright-red)',
+        10: 'var(--terminal-bright-green)',
+        11: 'var(--terminal-bright-yellow)',
+        12: 'var(--terminal-bright-blue)',
+        13: 'var(--terminal-bright-magenta)',
+        14: 'var(--terminal-bright-cyan)',
+        15: 'var(--terminal-bright-white)',
     };
 
-    range(0, 5).forEach((red) => {
-        range(0, 5).forEach((green) => {
-            range(0, 5).forEach((blue) => {
+    range(0, 5).forEach(red => {
+        range(0, 5).forEach(green => {
+            range(0, 5).forEach(blue => {
                 setStyleColor(red, green, blue, colors);
             });
         });
     });
 
-    range(0, 23).forEach((gray) => {
+    range(0, 23).forEach(gray => {
         const c = gray + 232;
         const l = toHexString(gray * 10 + 8);
 
@@ -120,32 +120,57 @@ function toColorHexString(ref: number[]): string {
 
 function generateOutput(stack: string[], token: string, data: string | number, options: AnsiToHtmlOptions): string {
     if (token === 'text') {
-        // Note: Param 'data' must be a string at this point
-        return pushText(data as string, options);
-    } else if (token === 'display') {
-        return handleDisplay(stack, data, options);
-    } else if (token === 'xterm256') {
-        // Note: Param 'data' must be a string at this point
-        return handleXterm256(stack, data as string, options);
+        assert(isString(data), "Param 'data' must be a string at this point");
+        return pushText(data, options);
     }
+    if (token === 'display') {
+        return handleDisplay(stack, data, options);
+    }
+    if (token === 'xterm256') {
+        assert(isString(data), "Param 'data' must be a string at this point");
+        return handleXterm256(stack, data, options);
+    }
+    if (token === 'rgb') {
+        assert(isString(data), "Param 'data' must be a string at this point");
+        return handleRgb(stack, data, options);
+    }
+    if (token === 'url') {
+        assert(isString(data), "Param 'data' must be a string at this point");
+        return handleUrl(stack, data, options);
+    }
+
+    return '';
+}
+
+function handleRgb(stack: string[], data: string, options: AnsiToHtmlOptions) {
+    data = data.substring(2).slice(0, -1);
+    const operation = +data.substring(0, 2);
+
+    const color = data.substring(5).split(';');
+    const rgb = color
+        .map(value => {
+            return ('0' + Number(value).toString(16)).slice(-2);
+        })
+        .join('');
+
+    return pushStyle(stack, (operation === 38 ? 'color:#' : 'background-color:#') + rgb);
 }
 
 function handleXterm256(stack: string[], data: string, options: AnsiToHtmlOptions): string {
     data = data.substring(2).slice(0, -1);
-    const operation = +data.substr(0, 2);
-    const color = +data.substr(5);
+    const operation = +data.substring(0, 2);
+    const color = +data.substring(5);
     if (operation === 38) {
         return pushForegroundColor(stack, options.colors[color]);
-    } else {
-        return pushBackgroundColor(stack, options.colors[color]);
     }
+    return pushBackgroundColor(stack, options.colors[color]);
 }
 
-function handleDisplay(stack: string[], _code: string | number, options: AnsiToHtmlOptions): string {
-    const code: number = parseInt(_code as string, 10);
+function handleDisplay(stack: string[], code: string | number, options: AnsiToHtmlOptions): string {
+    code = isString(code) ? Number.parseInt(code, 10) : code;
     const codeMap: Record<number, () => string> = {
         '-1': () => '<br />',
-        0: () => stack.length && resetStyles(stack),
+        0: () => (stack.length ? resetStyles(stack) : ''),
         1: () => pushTag(stack, 'b'),
         2: () => pushStyle(stack, 'opacity:0.6'),
         3: () => pushTag(stack, 'i'),
@@ -155,23 +180,37 @@ function handleDisplay(stack: string[], _code: string | number, options: AnsiToH
         22: () => closeTag(stack, 'b'),
         23: () => closeTag(stack, 'i'),
         24: () => closeTag(stack, 'u'),
-        39: () => pushForegroundColor(stack, options.fg),
-        49: () => pushBackgroundColor(stack, options.bg),
+        39: () => pushForegroundColor(stack, unwrap(options.fg)),
+        49: () => pushBackgroundColor(stack, unwrap(options.bg)),
     };
 
-    if (codeMap[code]) {
+    if (code in codeMap) {
         return codeMap[code]();
-    } else if (4 < code && code < 7) {
+    }
+    if (4 < code && code < 7) {
         return pushTag(stack, 'blink');
-    } else if (29 < code && code < 38) {
+    }
+    if (code === 7) {
+        return '';
+    }
+    if (29 < code && code < 38) {
         return pushForegroundColor(stack, options.colors[code - 30]);
-    } else if (39 < code && code < 48) {
+    }
+    if (39 < code && code < 48) {
         return pushBackgroundColor(stack, options.colors[code - 40]);
-    } else if (89 < code && code < 98) {
+    }
+    if (89 < code && code < 98) {
         return pushForegroundColor(stack, options.colors[8 + (code - 90)]);
-    } else if (99 < code && code < 108) {
+    }
+    if (99 < code && code < 108) {
         return pushBackgroundColor(stack, options.colors[8 + (code - 100)]);
     }
+    return 'Unknown code';
+}
+
+function handleUrl(stack: string[], data: string, options: AnsiToHtmlOptions): string {
+    const [url, text] = data.split(/\x1b\\|\x07/);
+    return `<a class="diagnostic-url" target="_blank" rel="noreferrer" href=${encodeURI(url)}>${escapeHTML(text)}</a>`;
 }
 
 /**
@@ -181,7 +220,10 @@ function resetStyles(stack: string[]): string {
     const stackClone = stack.slice(0);
     stack.length = 0;
 
-    return stackClone.reverse().map((tag) => `</${tag}>`).join('');
+    return stackClone
+        .reverse()
+        .map(tag => `</${tag}>`)
+        .join('');
 }
 
 /**
@@ -207,36 +249,43 @@ function range(low: number, high: number): number[] {
  */
 function notCategory(category: string): (e: StickyStackElement) => boolean {
     return (e: StickyStackElement): boolean => {
-        return (category === null || e.category !== category) && category !== 'all';
+        return e.category !== category && category !== 'all';
     };
 }
 
 /**
  * Converts a code into an ansi token type
  *
- * @param _code - the code to convert
+ * @param code - the code to convert
  * @returns the ansi token type
  */
-function categoryForCode(_code: string | number): string {
-    const code: number = parseInt(_code as string, 10);
-
+function categoryForCode(code: string | number): string {
+    code = isString(code) ? Number.parseInt(code, 10) : code;
     if (code === 0) {
         return 'all';
-    } else if (code === 1) {
+    }
+    if (code === 1) {
         return 'bold';
-    } else if (2 < code && code < 5) {
+    }
+    if (2 < code && code < 5) {
         return 'underline';
-    } else if (4 < code && code < 7) {
+    }
+    if (4 < code && code < 7) {
         return 'blink';
-    } else if (code === 8) {
+    }
+    if (code === 8) {
         return 'hide';
-    } else if (code === 9) {
+    }
+    if (code === 9) {
         return 'strike';
-    } else if (29 < code && code < 38 || code === 39 || 89 < code && code < 98) {
+    }
+    if ((29 < code && code < 38) || code === 39 || (89 < code && code < 98)) {
         return 'foreground-color';
-    } else if (39 < code && code < 48 || code === 49 || 99 < code && code < 108) {
+    }
+    if ((39 < code && code < 48) || code === 49 || (99 < code && code < 108)) {
         return 'background-color';
     }
+    return '';
 }
 
 function pushText(text: string, options: AnsiToHtmlOptions): string {
@@ -270,15 +319,16 @@ function pushBackgroundColor(stack: string[], color: string): string {
 }
 
 function closeTag(stack: string[], style: string): string {
-    let last: string = null;
+    let last: string | null = null;
 
     if (stack.slice(-1)[0] === style) {
-        last = stack.pop();
+        last = stack.pop() || null;
     }
 
     if (last) {
         return '</' + style + '>';
     }
+    return '';
 }
 
 type TokenizeCallback = (token: string, data: string | number) => void;
@@ -290,9 +340,14 @@ interface Token {
 
 function tokenize(text: string, options: AnsiToHtmlOptions, callback: TokenizeCallback) {
     let ansiMatch = false;
-    const ansiHandler = 3;
+    const ansiHandler = 4;
 
     function remove(): string {
+        return '';
+    }
+
+    function rgb(m: string) {
+        callback('rgb', m);
         return '';
     }
 
@@ -332,29 +387,50 @@ function tokenize(text: string, options: AnsiToHtmlOptions, callback: TokenizeCa
         return '';
     }
 
+    function hyperlink(_m: string, captureGroup: string): string {
+        callback('url', captureGroup);
+        return '';
+    }
+
     /* eslint no-control-regex:0 */
-    const tokens: Token[] = [{
-        pattern: /^\x08+/,
-        sub: remove,
-    }, {
-        pattern: /^\x1b\[[012]?K/,
-        sub: remove,
-    }, {
-        pattern: /^\x1b\[[34]8;5;(\d+)m/,
-        sub: removeXterm256,
-    }, {
-        pattern: /^\n/,
-        sub: newline,
-    }, {
-        pattern: /^\x1b\[((?:\d{1,3};)*\d{1,3}|)m/,
-        sub: ansiMess,
-    }, {
-        pattern: /^\x1b\[?[\d;]{0,3}/,
-        sub: remove,
-    }, {
-        pattern: /^([^\x1b\x08\n]+)/,
-        sub: realText,
-    }];
+    const tokens: Token[] = [
+        {
+            pattern: /^\x1b]8;;(.*?(\x1b\\|\x07).*?)\x1b]8;;\2/,
+            sub: hyperlink,
+        },
+        {
+            pattern: /^\x08+/,
+            sub: remove,
+        },
+        {
+            pattern: /^\x1b\[[012]?K/,
+            sub: remove,
+        },
+        {
+            pattern: /^\x1b\[[34]8;2;\d+;\d+;\d+m/,
+            sub: rgb,
+        },
+        {
+            pattern: /^\x1b\[[34]8;5;(\d+)m/,
+            sub: removeXterm256,
+        },
+        {
+            pattern: /^\n/,
+            sub: newline,
+        },
+        {
+            pattern: /^\x1b\[((?:\d{1,3};)*\d{1,3}|)m/,
+            sub: ansiMess,
+        },
+        {
+            pattern: /^\x1b\[?[\d;]{0,3}/,
+            sub: remove,
+        },
+        {
+            pattern: /^([^\x1b\x08\n]+)/,
+            sub: realText,
+        },
+    ];
 
     function process(handler: Token, i: number): void {
         if (i > ansiHandler && ansiMatch) {
@@ -385,9 +461,8 @@ function tokenize(text: string, options: AnsiToHtmlOptions, callback: TokenizeCa
 
         if (text.length === length) {
             break;
-        } else {
-            results1.push(0);
         }
+        results1.push(0);
 
         length = text.length;
     }
@@ -410,8 +485,9 @@ interface StickyStackElement {
 function updateStickyStack(
     stickyStack: StickyStackElement[],
     token: string,
-    data: string | number): StickyStackElement[] {
-    if (token !== 'text') {
+    data: string | number,
+): StickyStackElement[] {
+    if (token !== 'text' && token !== 'url') {
         stickyStack = stickyStack.filter(notCategory(categoryForCode(data)));
         stickyStack.push({
             token: token,
@@ -428,9 +504,7 @@ export class Filter {
     private readonly stack: string[];
     private stickyStack: StickyStackElement[];
 
-    public constructor(options: AnsiToHtmlOptions) {
-        options = options || {};
-
+    public constructor(options: Partial<AnsiToHtmlOptions>) {
         if (options.colors) {
             options.colors = _.extend(defaults.colors, options.colors);
         }
@@ -440,8 +514,8 @@ export class Filter {
         this.stickyStack = [];
     }
 
-    public toHtml(_input: string | string[]): string {
-        const input: string[] = typeof _input === 'string' ? [_input] : _input;
+    public toHtml(input: string | string[]): string {
+        input = typeof input === 'string' ? [input] : input;
         const stack = this.stack;
         const options = this.opts;
         const buf: string[] = [];
@@ -471,5 +545,9 @@ export class Filter {
         }
 
         return buf.join('');
+    }
+
+    public reset() {
+        this.stickyStack = [];
     }
 }

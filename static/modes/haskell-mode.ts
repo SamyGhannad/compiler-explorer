@@ -21,30 +21,34 @@
 // CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
+import * as monaco from 'monaco-editor';
 
-'use strict';
-const monaco = require('monaco-editor');
-
-function definition() {
+function definition(): monaco.languages.IMonarchLanguage {
     return {
         keywords: [
-            'module', 'import', 'main', 'where', 'otherwise', 'newtype',
-            'definition', 'implementation', 'from', 'class', 'instance', 'abort',
+            'module',
+            'import',
+            'main',
+            'where',
+            'otherwise',
+            'newtype',
+            'definition',
+            'implementation',
+            'from',
+            'class',
+            'instance',
+            'abort',
         ],
 
-        builtintypes: [
-            'Int', 'Real', 'String',
-        ],
+        builtintypes: ['Int', 'Real', 'String'],
 
-        operators: [
-            '=', '==', '>=', '<=', '+', '-', '*', '/', '::', '->', '=:', '=>', '|', '$',
-        ],
+        operators: ['=', '==', '>=', '<=', '+', '-', '*', '/', '::', '->', '=:', '=>', '|', '$'],
 
         numbers: /-?[0-9.]/,
 
         tokenizer: {
             root: [
-                { include: '@whitespace' },
+                {include: '@whitespace'},
 
                 [/->/, 'operators'],
 
@@ -54,13 +58,16 @@ function definition() {
 
                 [/[+\-*/=<>$]/, 'operators'],
 
-                [/[a-zA-Z_][a-zA-Z0-9_]*/, {
-                    cases: {
-                        '@builtintypes': 'type',
-                        '@keywords': 'keyword',
-                        '@default': '',
+                [
+                    /[a-zA-Z_][a-zA-Z0-9_]*/,
+                    {
+                        cases: {
+                            '@builtintypes': 'type',
+                            '@keywords': 'keyword',
+                            '@default': '',
+                        },
                     },
-                }],
+                ],
 
                 [/[()[\],:]/, 'delimiter'],
 
@@ -87,5 +94,3 @@ function definition() {
 
 monaco.languages.register({id: 'haskell'});
 monaco.languages.setMonarchTokensProvider('haskell', definition());
-
-export {};

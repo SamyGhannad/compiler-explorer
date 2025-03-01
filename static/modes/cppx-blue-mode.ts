@@ -22,14 +22,17 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-'use strict';
-const monaco = require('monaco-editor');
-const cpp = require('monaco-editor/esm/vs/basic-languages/cpp/cpp');
-const cppp = require('./cppp-mode');
+import $ from 'jquery';
 
-function definition() {
+import * as monaco from 'monaco-editor';
+
+// @ts-ignore  "Could not find a declaration file"
+import * as cpp from 'monaco-editor/esm/vs/basic-languages/cpp/cpp';
+import cppp from './cppp-mode.js';
+
+function definition(): monaco.languages.IMonarchLanguage {
     const cppx_blue = $.extend(true, {}, cppp); // deep copy
-    cppx_blue.tokenPostfix = '.cppx-blue';
+    cppx_blue.tokenPostfix = '.herb';
 
     // add the 'type' keyword
     cppx_blue.keywords.push('type');
@@ -43,5 +46,3 @@ function definition() {
 monaco.languages.register({id: 'cppx-blue'});
 monaco.languages.setLanguageConfiguration('cppx-blue', cpp.conf);
 monaco.languages.setMonarchTokensProvider('cppx-blue', definition());
-
-export {};

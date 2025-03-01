@@ -24,11 +24,11 @@
 
 import * as monaco from 'monaco-editor';
 
-import { Alert } from './alert';
-import { Settings } from './settings';
-import { SiteSettings } from './settings';
-import { FormattingRequest } from './api/formatting.interfaces';
-import { getFormattedCode } from './api/api';
+import {getFormattedCode} from './api/api.js';
+import {FormattingRequest} from './api/formatting.interfaces.js';
+import {unwrap} from './assert.js';
+import {Settings} from './settings.js';
+import {Alert} from './widgets/alert.js';
 
 // Proxy function to emit the error to the alert system
 const onFormatError = (cause: string, source: string) => {
@@ -45,11 +45,11 @@ const doFormatRequest = async (options: FormattingRequest) => {
     const body = await res.json();
     if (res.status === 200 && body.exit === 0) {
         // API sent 200 and we have a valid response
-        return body.answer;
+        return unwrap(body.answer);
     }
     // We had an error (either HTTP request error, or API error)
     // Figure out which it is, show it to the user, and reject the promise
-    const cause = body?.answer ?? res.statusText;
+    const cause = body.answer ?? res.statusText;
     throw new Error(cause);
 };
 
@@ -64,12 +64,12 @@ const doFormatRequest = async (options: FormattingRequest) => {
 const getDocumentFormatter = (
     language: string,
     formatter: string,
-    isOneTrueStyle: boolean
+    isOneTrueStyle: boolean,
 ): monaco.languages.DocumentFormattingEditProvider => ({
     async provideDocumentFormattingEdits(
         model: monaco.editor.ITextModel,
         options: monaco.languages.FormattingOptions,
-        token: monaco.CancellationToken
+        token: monaco.CancellationToken,
     ): Promise<monaco.languages.TextEdit[]> {
         const settings = Settings.getStoredSettings();
         // If there is only one style, return __DefaultStyle.
@@ -84,10 +84,12 @@ const getDocumentFormatter = (
             source,
             base,
         }).catch(err => onFormatError(err, source));
-        return [{
-            range: model.getFullModelRange(),
-            text: formattedSource,
-        }];
+        return [
+            {
+                range: model.getFullModelRange(),
+                text: formattedSource,
+            },
+        ];
     },
 });
 
@@ -101,3 +103,5 @@ register('cppp', 'clangformat', false);
 register('nc', 'clangformat', false);
 register('go', 'gofmt', true);
 register('rust', 'rustfmt', true);
+register('dart', 'dartformat', true);
+register('v', 'vfmt', true);
