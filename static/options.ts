@@ -22,19 +22,25 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+import {unwrap} from './assert.js';
+
 const configElement = document.getElementById('config');
-
-window.httpRoot = configElement.getAttribute('httpRoot');
-window.staticRoot = configElement.getAttribute('staticRoot');
-
-const extraOptions: object = JSON.parse(decodeURIComponent(configElement.getAttribute('extraOptions')));
-for (const key in extraOptions) {
-    window.compilerExplorerOptions[key] = extraOptions[key];
+if (!configElement) {
+    throw new Error('Could not find config element in DOM tree');
 }
 
+// httpRoot & staticRoot are always a string and always set.
+window.httpRoot = unwrap(configElement.getAttribute('httpRoot'));
+window.staticRoot = unwrap(configElement.getAttribute('staticRoot'));
+
+const extraOptions: object = JSON.parse(decodeURIComponent(configElement.getAttribute('extraOptions') ?? '"%7B%7D"')); // Encoded {}
+for (const key in extraOptions) {
+    window.compilerExplorerOptions[key] = extraOptions[key as keyof typeof extraOptions];
+}
+
+// biome-ignore lint/style/useConst: can't use const here
 declare let __webpack_public_path__: string;
 
-// eslint-disable-next-line prefer-const
 __webpack_public_path__ = window.staticRoot;
 
 export const options = window.compilerExplorerOptions;

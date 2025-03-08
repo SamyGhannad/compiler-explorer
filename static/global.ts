@@ -22,22 +22,19 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import { IFrontendTesting } from './tests/frontend-testing.interfaces';
-import { Options } from './options.interfaces';
+import {Options} from './options.interfaces.js';
+import {IFrontendTesting} from './tests/frontend-testing.interfaces.js';
 
-type CompilerExplorerOptions = Record<string, unknown> & Options
+export type CompilerExplorerOptions = Record<string, unknown> & Options;
 
 declare global {
     export interface Window {
-        httpRoot: string | null;
-        staticRoot: string | null;
+        httpRoot: string;
+        staticRoot: string;
         compilerExplorerOptions: CompilerExplorerOptions;
         compilerExplorerFrontendTesting: IFrontendTesting;
-        ga: any;
-        GoogleAnalyticsObject: any;
+        hasUIBeenReset: boolean;
+        PRODUCTION: boolean;
+        onSponsorClick: (sponsorUrl: string) => void;
     }
 }
-
-// Necessary because we're not exporting any actual symbols from this file
-// See https://www.typescriptlang.org/docs/handbook/declaration-files/templates/global-modifying-module-d-ts.html
-export {};

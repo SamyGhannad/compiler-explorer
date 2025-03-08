@@ -9,7 +9,7 @@ block prepend content
       ul.navbar-nav.navbar-left.mr-auto
         li.nav-item.dropdown
           button.btn.btn-light.nav-link.dropdown-toggle#addDropdown(role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false") Add...
-          div.dropdown-menu(aria-labelledby="moreDropdown")
+          div.dropdown-menu(aria-labelledby="addDropdown")
             button.dropdown-item.btn#add-editor(title="Click or drag to desired destination")
               span.dropdown-icon.fa.fa-code
               | Source Editor
@@ -20,16 +20,16 @@ block prepend content
               span.dropdown-icon.fa.fa-list-alt
               | Tree (IDE Mode)
         li.nav-item.dropdown
-          button.btn.btn-light.nav-link.dropdown-toggle#moreDropdown(role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false") More
+          button.btn.btn-light.nav-link.dropdown-toggle#moreDropdown(role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" data-cy="more-dropdown-btn") More
           div.dropdown-menu(aria-labelledby="moreDropdown")
             button.dropdown-item.btn#setting(data-target="#settings" data-toggle="modal")
               span.dropdown-icon.fas.fa-sliders-h
               | Settings
             div.dropdown-divider
-            button.dropdown-item.btn#ui-brokenlink
+            a.dropdown-item.btn#ui-brokenlink
               span.dropdown-icon.fas.fa-undo-alt
               | Reset UI layout
-            button.dropdown-item.btn#ui-reset
+            button.dropdown-item.btn#ui-reset(data-cy="reset-ui-btn")
               span.dropdown-icon.fas.fa-trash-alt
               | Reset code and UI layout
             button.dropdown-item.btn#ui-duplicate
@@ -38,6 +38,16 @@ block prepend content
             button.dropdown-item.btn#ui-history
               span.dropdown-icon.fas.fa-exchange-alt
               | History
+            div.dropdown-divider
+            button.dropdown-item.btn#ui-apply-default-font-scale
+              span.dropdown-icon.fas.fa-font
+              | Apply Default Font Scale
+        li.nav-item
+            button.btn.btn-light.nav-link#loadSiteTemplate(role="button") Templates
+        li.nav-item.shortlinkInfo.d-none
+          button.btn.btn-light.nav-link.shortlinkInfoBtn
+            span.fa.fa-info-circle
+            span.hideable.shortlinkInfoText
         li.nav-item.ui-presentation-control.d-none
           a.nav-link.ui-presentation-first(href="javascript:;")
             span.dropdown-icon.fas.fa-fast-backward
@@ -50,14 +60,14 @@ block prepend content
           a.nav-link.ui-presentation-next(href="javascript:;")
             span.dropdown-icon.fas.fa-forward
             | Next
-      ul#motd.navbar-nav.navbar-center.mr-auto.community-advert.d-none
+      ul#motd.navbar-nav.navbar-left.mr-auto.community-advert.d-none
         span.content
           | Thanks for using Compiler Explorer
         span.community-hide(title="Hide and never show again" aria-label="Close")
           button.close(type="button" aria-hidden="true") &times;
       ul.navbar-nav.navbar-right
         if showSponsors
-          li.nav-item.btn.btn-outline-primary#ces(data-toggle="modal")
+          li.nav-item.btn.btn-outline-info#ces(data-toggle="modal")
             span#ces-banner-text Sponsors
             include sponsor-icons.pug
         li.nav-item.dropdown
@@ -94,4 +104,9 @@ block prepend content
             include menu-other.pug
 
 block append footer
-  include popups.pug
+  include popups/_all
+  #real-dark
+  #true-dark
+    .content Try the real dark theme 🔦
+      .close
+        i.fa-solid.fa-xmark

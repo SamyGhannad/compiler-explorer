@@ -22,17 +22,15 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-const monaco = require('monaco-editor');
+import * as monaco from 'monaco-editor';
 
-function definition() {
+function definition(): monaco.languages.IMonarchLanguage {
     return {
         commands: ['-module', '-export', '-compile', '-record'],
 
         funcdef: ['when', '->', 'if', 'end', 'unknown', 'case', 'of', 'receive', 'after'],
 
-        operators: [
-            '<=', '>=', '==', '!=', '=<', '+', '-', '*', '/',
-        ],
+        operators: ['<=', '>=', '==', '!=', '=<', '+', '-', '*', '/'],
 
         symbols: /[=><!+\-*/]+/,
 
@@ -42,29 +40,38 @@ function definition() {
             root: [
                 [/-?\d[\d.]*/, 'number'],
 
-                [/-[a-zA-Z][\w]*/, {
-                    cases: {
-                        '@commands': 'keyword',
-                        '@default': '',
+                [
+                    /-[a-zA-Z][\w]*/,
+                    {
+                        cases: {
+                            '@commands': 'keyword',
+                            '@default': '',
+                        },
                     },
-                }],
+                ],
 
-                [/[a-zA-Z-][>\w]*/, {
-                    cases: {
-                        '@funcdef': 'keyword',
-                        '@default': 'identifier',
+                [
+                    /[a-zA-Z-][>\w]*/,
+                    {
+                        cases: {
+                            '@funcdef': 'keyword',
+                            '@default': 'identifier',
+                        },
                     },
-                }],
+                ],
 
                 [/[(){}[\]]/, '@brackets'],
                 [/<<.*>>/, '@brackets'],
 
-                [/@symbols/, {
-                    cases: {
-                        '@operators': 'delimiter',
-                        '@default': '',
+                [
+                    /@symbols/,
+                    {
+                        cases: {
+                            '@operators': 'delimiter',
+                            '@default': '',
+                        },
                     },
-                }],
+                ],
 
                 [/^%.*/, 'comment'],
 
@@ -79,13 +86,9 @@ function definition() {
                 [/[;.,]/, 'delimiter'],
             ],
 
-            whitespace: [
-                [/\s/],
-            ],
+            whitespace: [[/\s/, 'whitespace']],
 
-            comment: [
-                [/%/, 'comment'],
-            ],
+            comment: [[/%/, 'comment']],
 
             stringDouble: [
                 [/[^\\"]+/, 'string'],
@@ -102,7 +105,7 @@ function definition() {
     };
 }
 
-function configuration() {
+function configuration(): monaco.languages.LanguageConfiguration {
     return {
         comments: {
             lineComment: '%',
@@ -114,17 +117,17 @@ function configuration() {
             ['<<', '>>'],
         ],
         autoClosingPairs: [
-            { open: '{', close: '}', notIn: ['string', 'comment'] },
-            { open: '[', close: ']', notIn: ['string', 'comment'] },
-            { open: '(', close: ')', notIn: ['string', 'comment'] },
-            { open: '<<', close: '>>', notIn: ['string', 'comment'] },
-            { open: "'", close: "'", notIn: ['string', 'comment'] },
-            { open: '"', close: '"' },
+            {open: '{', close: '}', notIn: ['string', 'comment']},
+            {open: '[', close: ']', notIn: ['string', 'comment']},
+            {open: '(', close: ')', notIn: ['string', 'comment']},
+            {open: '<<', close: '>>', notIn: ['string', 'comment']},
+            {open: "'", close: "'", notIn: ['string', 'comment']},
+            {open: '"', close: '"'},
         ],
         folding: {
             markers: {
-                start: '^\\s*\\%\\%region\\b',
-                end: '^\\s*\\%\\%endregion\\b',
+                start: /^\s*%%region\b/,
+                end: /^\s*%%endregion\b/,
             },
         },
     };
@@ -132,8 +135,8 @@ function configuration() {
 
 const def = definition();
 
-monaco.languages.register({ id: 'erlang' });
+monaco.languages.register({id: 'erlang'});
 monaco.languages.setMonarchTokensProvider('erlang', def);
 monaco.languages.setLanguageConfiguration('erlang', configuration());
 
-export = def;
+export default def;

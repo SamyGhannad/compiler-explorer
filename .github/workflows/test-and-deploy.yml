@@ -1,69 +1,119 @@
 name: Compiler Explorer
 
-on: [push]
+on: [push, pull_request]
 
 jobs:
-  build-and-test:
-    runs-on: ubuntu-20.04
+  test:
+    runs-on: ubuntu-22.04
 
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Use Node.js 16.x
-        uses: actions/setup-node@v1
+      - name: Use Node.js 22.x
+        uses: actions/setup-node@v4
         with:
-          node-version: 16.x
-      - name: Get npm cache directory
-        id: npm-cache
+          node-version: 22.x
+          check-latest: true
+          cache: npm
+      - name: Install prerequisites
         run: |
-          echo "::set-output name=dir::$(npm config get cache)"
-      - uses: actions/cache@v1
+          make prereqs
+          python3 -m pip install numba
+      - name: Run checks
+        run: |
+          npm run lint-check
+          npm run test
+          npm run ts-check
+          python3 ./etc/scripts/util/propscheck.py
+          python3 ./etc/scripts/util/propschecktest.py
+          python3 ./etc/scripts/test_numba_wrapper.py
+      - uses: codecov/codecov-action@v4
         with:
-          path: ${{ steps.npm-cache.outputs.dir }}
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
+          token: ${{ secrets.CODECOV_TOKEN }}
+          verbose: true
+
+  build_minimum_support:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.18.2
+          check-latest: false
+          cache: npm
       - name: Install prerequisites
         run: make prereqs
-      - name: Build and test
+      - name: Run checks
         run: |
-          npm run lint
-          npm run ci-test
-      - name: Code coverage
-        run: npm run codecov
+          npm run ts-compile
+          npm run webpack
 
-  build-dist-and-deploy:
-    if: github.repository_owner == 'compiler-explorer'
-    needs: [build-and-test]
-    runs-on: ubuntu-20.04
+  build_dist:
+    if: github.repository_owner == 'compiler-explorer' && github.event_name == 'push'
+    runs-on: ubuntu-22.04
+    outputs:
+      release_name: ${{ steps.build_dist.outputs.release_name }}
+      branch: ${{ steps.build_dist.outputs.branch }}
 
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Use Node.js 16.x
-        uses: actions/setup-node@v1
+      - name: Use Node.js 22.x
+        uses: actions/setup-node@v4
         with:
-          node-version: 16.x
-      - name: Get npm cache directory
-        id: npm-cache
-        run: |
-          echo "::set-output name=dir::$(npm config get cache)"
-      - uses: actions/cache@v1
-        with:
-          path: ${{ steps.npm-cache.outputs.dir }}
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
+          node-version: 22.x
+          check-latest: true
+          cache: npm
       - name: Build distribution
         id: build_dist
+        run: etc/scripts/build-dist.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: out/dist-bin
+
+  deploy:
+    if: github.repository_owner == 'compiler-explorer' && github.event_name == 'push'
+    needs: [test, build_dist]
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Use Node.js 22.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          check-latest: true
+          cache: npm
+      - name: Download the built distribution
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: out/dist-bin
+      - name: Unpack static files for sentry
+        run: |
+          mkdir -p out/dist/static
+          tar Jxf out/dist-bin/*.static.tar.xz -C out/dist/static
+      - name: Tag in sentry
         run: |
           export SENTRY_AUTH_TOKEN='${{ secrets.SENTRY_AUTH_TOKEN }}'
           export SENTRY_DSN='${{ secrets.SENTRY_DSN }}'
           export SENTRY_ORG=compiler-explorer
           export SENTRY_PROJECT=compiler-explorer
-          etc/scripts/build-dist.sh
+          npm run sentry -- releases new -p compiler-explorer "${{ needs.build_dist.outputs.release_name }}"
+          npm run sentry -- releases set-commits --auto "${{ needs.build_dist.outputs.release_name }}"
+          npm run sentry -- releases files "${{ needs.build_dist.outputs.release_name }}" upload-sourcemaps out/dist/static
       - name: Deploy
         uses: jakejarvis/s3-sync-action@master
         with:
@@ -73,9 +123,21 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           SOURCE_DIR: out/dist-bin
-          DEST_DIR: dist/gh/${{ steps.build_dist.outputs.branch }}
+          DEST_DIR: dist/gh/${{ needs.build_dist.outputs.branch }}
       - name: Tag the commit
-        uses: tvdias/github-tagger@v0.0.2
+        uses: actions/github-script@v7
         with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          tag: gh-${{ github.run_number }}
+          script: |
+            github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: `refs/tags/gh-${context.runNumber}`,
+              sha: context.sha
+            })
+
+  post_deploy_check:
+    needs: [test, build_dist, deploy]
+    runs-on: [admin]
+    steps:
+      - name: Check hashes for deploy ${{ needs.build_dist.outputs.release_name }} to cdn
+        run: ce --env staging builds check_hashes ${{ needs.build_dist.outputs.release_name }}

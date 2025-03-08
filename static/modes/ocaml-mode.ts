@@ -21,11 +21,9 @@
 // CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
+import * as monaco from 'monaco-editor';
 
-'use strict';
-const monaco = require('monaco-editor');
-
-function definition() {
+function definition(): monaco.languages.IMonarchLanguage {
     return {
         keywords: [
             'and',
@@ -86,29 +84,25 @@ function definition() {
             'with',
         ],
 
-        typeKeywords: [
-            'int',
-            'int32',
-            'int64',
-            'bool',
-            'char',
-            'unit',
-        ],
+        typeKeywords: ['int', 'int32', 'int64', 'bool', 'char', 'unit'],
 
         numbers: /-?[0-9.]/,
 
         tokenizer: {
             root: [
                 // identifiers and keywords
-                [/[a-z_$][\w$]*/, {
-                    cases: {
-                        '@typeKeywords': 'keyword',
-                        '@keywords': 'keyword',
-                        '@default': 'identifier',
+                [
+                    /[a-z_$][\w$]*/,
+                    {
+                        cases: {
+                            '@typeKeywords': 'keyword',
+                            '@keywords': 'keyword',
+                            '@default': 'identifier',
+                        },
                     },
-                }],
+                ],
 
-                { include: '@whitespace' },
+                {include: '@whitespace'},
 
                 [/@numbers/, 'number'],
 
@@ -132,5 +126,3 @@ function definition() {
 
 monaco.languages.register({id: 'ocaml'});
 monaco.languages.setMonarchTokensProvider('ocaml', definition());
-
-export {};

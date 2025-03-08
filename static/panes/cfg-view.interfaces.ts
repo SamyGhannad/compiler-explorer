@@ -1,4 +1,4 @@
-// Copyright (c) 2021, Compiler Explorer Authors
+// Copyright (c) 2022, Compiler Explorer Authors
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -23,13 +23,24 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 export interface CfgState {
-    id: number;
-    editorid: number;
-    selectedFn?: string;
-    pos: any; // vis.Network.Position
-    scale: number;
-    options?: {
-        physics?: boolean;
-        navigation?: boolean;
-    }
+    selectedFunction: string | null;
+    isircfg?: boolean;
 }
+
+/*
+
+Previous state objects looked like:
+
+export interface CfgOptions {
+    physics?: boolean;
+    navigation?: boolean;
+}
+
+export interface CfgState extends PaneState {
+    selectedFn?: string;
+    pos: vis.Position;
+    scale: number;
+    options?: CfgOptions;
+}
+
+*/

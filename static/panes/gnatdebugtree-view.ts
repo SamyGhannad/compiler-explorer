@@ -22,21 +22,25 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import _ from 'underscore';
+import {Container} from 'golden-layout';
+import $ from 'jquery';
 import * as monaco from 'monaco-editor';
-import { Container } from 'golden-layout';
+import _ from 'underscore';
 
-import { Pane } from './pane';
-import { GnatDebugTreeState } from './gnatdebugtree-view.interfaces';
-import { BasePaneState } from './pane.interfaces';
+import {GnatDebugTreeState} from './gnatdebugtree-view.interfaces.js';
+import {MonacoPaneState} from './pane.interfaces.js';
+import {MonacoPane} from './pane.js';
 
-import { ga } from '../analytics';
-import { extendConfig } from '../monaco-config';
+import {unwrap} from '../assert.js';
+import {CompilationResult} from '../compilation/compilation.interfaces.js';
+import {CompilerInfo} from '../compiler.interfaces.js';
+import {Hub} from '../hub.js';
+import {extendConfig} from '../monaco-config.js';
 
-export class GnatDebugTree extends Pane<monaco.editor.IStandaloneCodeEditor, GnatDebugTreeState> {
-    constructor(hub: any, container: Container, state: GnatDebugTreeState & BasePaneState) {
+export class GnatDebugTree extends MonacoPane<monaco.editor.IStandaloneCodeEditor, GnatDebugTreeState> {
+    constructor(hub: Hub, container: Container, state: GnatDebugTreeState & MonacoPaneState) {
         super(hub, container, state);
-        if (state && state.gnatDebugTreeOutput) {
+        if (state.gnatDebugTreeOutput) {
             this.showGnatDebugTreeResults(state.gnatDebugTreeOutput);
         }
     }
@@ -45,50 +49,57 @@ export class GnatDebugTree extends Pane<monaco.editor.IStandaloneCodeEditor, Gna
         return $('#gnatdebugtree').html();
     }
 
-    override createEditor(editorRoot: HTMLElement): monaco.editor.IStandaloneCodeEditor {
-        return monaco.editor.create(editorRoot, extendConfig({
-            language: 'plainText',
-            readOnly: true,
-            glyphMargin: true,
-            lineNumbersMinChars: 3,
-        }));
+    override createEditor(editorRoot: HTMLElement): void {
+        this.editor = monaco.editor.create(
+            editorRoot,
+            extendConfig({
+                language: 'plainText',
+                readOnly: true,
+                glyphMargin: true,
+                lineNumbersMinChars: 3,
+            }),
+        );
     }
 
-    override registerOpeningAnalyticsEvent(): void {
-        ga.proxy('send', {
-            hitType: 'event',
-            eventCategory: 'OpenViewPane',
-            eventAction: 'GnatDebugTree',
-        });
+    override getPrintName() {
+        return 'Gnat Debug Tree Output';
     }
 
-    override getPaneName(): string {
-        return `GNAT Debug Tree Viewer ${this.compilerInfo.compilerName}` +
-            `(Editor #${this.compilerInfo.editorId}, ` +
-            `Compiler #${this.compilerInfo.compilerId})`;
+    override getDefaultPaneName(): string {
+        return 'GNAT Debug Tree Viewer';
     }
 
     override registerCallbacks(): void {
-        const throttleFunction = _.throttle((event) => this.onDidChangeCursorSelection(event), 500);
-        this.editor.onDidChangeCursorSelection((event) => throttleFunction(event));
+        const throttleFunction = _.throttle(
+            (event: monaco.editor.ICursorSelectionChangedEvent) => this.onDidChangeCursorSelection(event),
+            500,
+        );
+        this.editor.onDidChangeCursorSelection(event => throttleFunction(event));
         this.eventHub.emit('gnatDebugTreeViewOpened', this.compilerInfo.compilerId);
         this.eventHub.emit('requestSettings');
     }
 
-    override onCompileResult(compilerId: number, compiler: any, result: any): void {
+    override onCompileResult(compilerId: number, compiler: CompilerInfo, result: CompilationResult): void {
         if (this.compilerInfo.compilerId !== compilerId) return;
-        if (result.hasGnatDebugTreeOutput) {
-            this.showGnatDebugTreeResults(result.gnatDebugTreeOutput);
+        if (result.gnatDebugTreeOutput) {
+            this.showGnatDebugTreeResults(unwrap(result.gnatDebugTreeOutput));
         } else if (compiler.supportsGnatDebugViews) {
             this.showGnatDebugTreeResults([{text: '<No output>'}]);
         }
     }
 
-    override onCompiler(compilerId: number, compiler: any, options: any, editorId: number): void {
+    override onCompiler(
+        compilerId: number,
+        compiler: CompilerInfo | null,
+        options: string,
+        editorId?: number,
+        treeId?: number,
+    ): void {
         if (this.compilerInfo.compilerId === compilerId) {
             this.compilerInfo.compilerName = compiler ? compiler.name : '';
             this.compilerInfo.editorId = editorId;
-            this.setTitle();
+            this.compilerInfo.treeId = treeId;
+            this.updateTitle();
             if (compiler && !compiler.supportsGnatDebugViews) {
                 this.showGnatDebugTreeResults([{text: '<GNAT Debug Tree output is not supported for this compiler>'}]);
             }
@@ -96,16 +107,14 @@ export class GnatDebugTree extends Pane<monaco.editor.IStandaloneCodeEditor, Gna
     }
 
     showGnatDebugTreeResults(result: any[]): void {
-        if (!this.editor) return;
-        this.editor.getModel().setValue(result.length
-            ? _.pluck(result, 'text').join('\n')
-            : '<No GNAT Debug Tree generated>');
+        this.editor
+            .getModel()
+            ?.setValue(result.length ? _.pluck(result, 'text').join('\n') : '<No GNAT Debug Tree generated>');
 
         if (!this.isAwaitingInitialResults) {
             if (this.selection) {
                 this.editor.setSelection(this.selection);
-                this.editor.revealLinesInCenter(this.selection.selectionStartLineNumber,
-                    this.selection.endLineNumber);
+                this.editor.revealLinesInCenter(this.selection.selectionStartLineNumber, this.selection.endLineNumber);
             }
             this.isAwaitingInitialResults = true;
         }

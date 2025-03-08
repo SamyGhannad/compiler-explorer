@@ -22,36 +22,41 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import _ from 'underscore';
-import { Container } from 'golden-layout';
+import {Container} from 'golden-layout';
 import * as monaco from 'monaco-editor';
+import _ from 'underscore';
 
-import { BasePaneState, PaneCompilerState } from './pane.interfaces';
+import {MonacoPaneState, PaneCompilerState, PaneState} from './pane.interfaces.js';
 
-import { FontScale } from '../fontscale';
-import { SiteSettings } from '../settings';
-import * as utils from '../utils';
+import {Settings, SiteSettings} from '../settings.js';
+import * as utils from '../utils.js';
+import {FontScale} from '../widgets/fontscale.js';
+
+import {escapeHTML} from '../../shared/common-utils.js';
+import {unwrap} from '../assert.js';
+import {CompilationResult} from '../compilation/compilation.interfaces.js';
+import {CompilerInfo} from '../compiler.interfaces.js';
+import {EventHub} from '../event-hub.js';
+import {Hub} from '../hub.js';
+import {PaneRenaming} from '../widgets/pane-renaming.js';
 
 /**
- * Basic container for a tool pane in Compiler Explorer
- *
- * Type parameter E indicates which monaco editor kind this pane hosts. Common
- * values are monaco.editor.IDiffEditor and monaco.ICodeEditor
+ * Basic container for a tool pane in Compiler Explorer.
  *
  * Type parameter S refers to a state interface for the pane
  */
-export abstract class Pane<E extends monaco.editor.IEditor, S> {
+export abstract class Pane<S> {
     compilerInfo: PaneCompilerState;
     container: Container;
     domRoot: JQuery;
     topBar: JQuery;
     hideable: JQuery;
-    eventHub: any /* typeof hub.createEventHub() */;
-    selection: monaco.Selection;
-    editor: E;
-    fontScale: FontScale;
+    protected hub: Hub;
+    eventHub: EventHub;
     isAwaitingInitialResults = false;
-    settings: SiteSettings | Record<string, never> = {};
+    settings: SiteSettings;
+    paneName: string | undefined = undefined;
+    paneRenaming: PaneRenaming;
 
     /**
      * Base constructor for any pane. Performs common initialization tasks such
@@ -59,31 +64,38 @@ export abstract class Pane<E extends monaco.editor.IEditor, S> {
      *
      * Overridable for implementors
      */
-    protected constructor(hub: any /* Hub */, container: Container, state: S & BasePaneState) {
+    protected constructor(hub: Hub, container: Container, state: S & PaneState) {
         this.container = container;
+        this.hub = hub;
         this.eventHub = hub.createEventHub();
         this.domRoot = container.getElement();
+        this.domRoot.html(this.getInitialHTML());
+
         this.hideable = this.domRoot.find('.hideable');
 
-        this.domRoot.html(this.getInitialHTML());
-        const editorRoot = this.domRoot.find('.monaco-placeholder')[0];
-        this.editor = this.createEditor(editorRoot);
-
-        this.selection = state.selection;
-        this.compilerInfo = {
-            compilerId: state.id,
-            compilerName: state.compilerName,
-            editorId: state.editorid,
-        };
-        this.fontScale = new FontScale(this.domRoot, state, this.editor);
+        this.initializeCompilerInfo(state);
         this.topBar = this.domRoot.find('.top-bar');
+
+        this.paneRenaming = new PaneRenaming(this, state, hub);
+
+        this.initializeDefaults();
+        this.initializeGlobalDependentProperties();
+        this.initializeStateDependentProperties(state);
+
+        this.registerDynamicElements(state);
 
         this.registerButtons(state);
         this.registerStandardCallbacks();
         this.registerCallbacks();
-        this.registerEditorActions();
-        this.setTitle();
-        this.registerOpeningAnalyticsEvent();
+    }
+
+    protected initializeCompilerInfo(state: PaneState) {
+        this.compilerInfo = {
+            compilerId: state.id,
+            compilerName: state.compilerName,
+            editorId: state.editorid,
+            treeId: state.treeid,
+        };
     }
 
     /**
@@ -98,31 +110,16 @@ export abstract class Pane<E extends monaco.editor.IEditor, S> {
      */
     abstract getInitialHTML(): string;
 
-    /**
-     * Initialize the monaco editor instance. Typical implementation for looks
-     * like this:
-     *
-     * ```ts
-     * return monaco.editor.create(editorRoot, extendConfig({
-     *     // goodies
-     * }));
-     * ```
-     */
-    abstract createEditor(editorRoot: HTMLElement): E;
+    initializeDefaults(): void {}
 
-    /**
-     * Emit analytics event for opening the pane tab. Typical implementation
-     * looks like this:
-     *
-     * ```ts
-     * ga.proxy('send', {
-     *   hitType: 'event',
-     *   eventCategory: 'OpenViewPane',
-     *   eventAction: 'RustMir',
-     * });
-     * ```
-     */
-    abstract registerOpeningAnalyticsEvent(): void
+    initializeGlobalDependentProperties(): void {
+        this.settings = Settings.getStoredSettings();
+    }
+
+    initializeStateDependentProperties(state: S): void {}
+
+    /** Optional overridable code for initializing necessary elements before rest of registers **/
+    registerDynamicElements(state: S): void {}
 
     /** Optionally overridable code for initializing pane buttons */
     registerButtons(state: S): void {}
@@ -131,35 +128,13 @@ export abstract class Pane<E extends monaco.editor.IEditor, S> {
     registerCallbacks(): void {}
 
     /**
-     * Optionally overridable code for initializing monaco actions on the
-     * editor instance
-     */
-    registerEditorActions(): void {}
-
-    /**
-     * Produce a textual title for the pane
-     *
-     * Typical implementation uses the compiler and editor ids in combination
-     * with a name.
-     *
-     * This title is attached to the pane in the UI.
-     *
-     * ```ts
-     * return `Rust MIR Viewer ${this.compilerInfo.compilerName}` +
-     *     `(Editor #${this.compilerInfo.editorId}, ` +
-     *     `Compiler #${this.compilerInfo.compilerId})`;
-     * ```
-     */
-    abstract getPaneName(): string;
-
-    /**
      * Handle user selected compiler change.
      *
      * This event is triggered when the user selects a different compiler in the
      * compiler dropdown.
      *
      * Note that this event is also triggered when the changed compiler is not
-     * the one this view is attached to. Therefore it is smart to check that
+     * the one this view is attached to. Therefore, it is smart to check that
      * the updated compiler is the one the view is attached to. This can be done
      * with a simple check.
      *
@@ -169,10 +144,16 @@ export abstract class Pane<E extends monaco.editor.IEditor, S> {
      *
      * @param compilerId - Id of the compiler that had its version changed
      * @param compiler - The updated compiler object
-     * @param options
+     * @param options - User commandline args
      * @param editorId - The editor id the updated compiler is attached to
      */
-    abstract onCompiler(compilerId: number, compiler: unknown, options: unknown, editorId: number): void;
+    abstract onCompiler(
+        compilerId: number,
+        compiler: CompilerInfo | null,
+        options: string,
+        editorId: number,
+        treeId: number,
+    ): void;
 
     /**
      * Handle compilation result.
@@ -181,7 +162,7 @@ export abstract class Pane<E extends monaco.editor.IEditor, S> {
      *
      * Note that this event is triggered for *any* compilation, even when the
      * compilation was done for a source/compiler this view is not attached to.
-     * Therefore it is smart to check that the updated compiler is the one the
+     * Therefore, it is smart to check that the updated compiler is the one the
      * view is attached to. This can be done with a simple check.
      *
      * ```ts
@@ -192,19 +173,18 @@ export abstract class Pane<E extends monaco.editor.IEditor, S> {
      * @param compiler - The compiler object
      * @param result - The entire HTTP request response
      */
-    abstract onCompileResult(compilerId: number, compiler: unknown, result: unknown): void;
+    abstract onCompileResult(compilerId: number, compiler: CompilerInfo, result: CompilationResult): void;
 
     /**
      * Perform any clean-up events when the pane is closed.
      *
-     * This is typically used to emit an analytics event for closing the pane,
-     * unsubscribing from the event hub and disposing the monaco editor.
+     * This is typically used to unsubscribe from the event hub and dispose the monaco editor.
      */
     abstract close(): void;
 
     /** Initialize standard lifecycle hooks */
     protected registerStandardCallbacks(): void {
-        this.fontScale.on('change', this.updateState.bind(this));
+        this.eventHub.on('renamePane', this.updateState.bind(this));
         this.container.on('destroy', this.close.bind(this));
         this.container.on('resize', this.resize.bind(this));
         this.eventHub.on('compileResult', this.onCompileResult.bind(this));
@@ -215,8 +195,33 @@ export abstract class Pane<E extends monaco.editor.IEditor, S> {
         this.eventHub.on('resize', this.resize.bind(this));
     }
 
-    protected setTitle() {
-        this.container.setTitle(this.getPaneName());
+    /**
+     * Produce a default name for the pane. Typical implementation
+     * looks like this:
+     *
+     * ```ts
+     * return 'Rust MIR Viewer';
+     * ```
+     */
+    abstract getDefaultPaneName(): string;
+
+    /** Generate "(Editor #1, Compiler #1)" tag */
+    protected getPaneTag() {
+        const {compilerName, editorId, treeId, compilerId} = this.compilerInfo;
+        if (editorId) {
+            return `${compilerName} (Editor #${editorId}, Compiler #${compilerId})`;
+        }
+        return `${compilerName} (Tree #${treeId}, Compiler #${compilerId})`;
+    }
+
+    /** Get name for the pane */
+    protected getPaneName() {
+        return this.paneName ?? this.getDefaultPaneName() + ' ' + this.getPaneTag();
+    }
+
+    /** Update the pane's title, called when the pane name or compiler info changes */
+    protected updateTitle() {
+        this.container.setTitle(escapeHTML(this.getPaneName()));
     }
 
     /** Close the pane if the compiler this pane was attached to closes */
@@ -226,15 +231,90 @@ export abstract class Pane<E extends monaco.editor.IEditor, S> {
         }
     }
 
-    protected onDidChangeCursorSelection(event: monaco.editor.ICursorSelectionChangedEvent) {
-        if (this.isAwaitingInitialResults) {
-            this.selection = event.selection;
-            this.updateState();
-        }
-    }
-
     protected onSettingsChange(settings: SiteSettings) {
         this.settings = settings;
+    }
+
+    getCurrentState(): PaneState {
+        const state = {
+            id: this.compilerInfo.compilerId,
+            compilerName: this.compilerInfo.compilerName,
+            editorid: this.compilerInfo.editorId,
+            treeid: this.compilerInfo.treeId,
+        };
+        this.paneRenaming.addState(state);
+        return state;
+    }
+
+    updateState() {
+        this.container.setState(this.getCurrentState());
+    }
+
+    abstract resize(): void;
+}
+
+/**
+ * Basic container for a tool pane with a monaco editor in Compiler Explorer.
+ *
+ * Type parameter E indicates which monaco editor kind this pane hosts. Common
+ * values are monaco.editor.IDiffEditor and monaco.ICodeEditor
+ *
+ * Type parameter S refers to a state interface for the pane
+ */
+export abstract class MonacoPane<E extends monaco.editor.IEditor, S> extends Pane<S> {
+    editor: E;
+    editorDecorations: monaco.editor.IEditorDecorationsCollection;
+    selection: monaco.Selection | undefined = undefined;
+    fontScale: FontScale;
+
+    protected constructor(hub: Hub, container: Container, state: S & MonacoPaneState) {
+        super(hub, container, state);
+        this.selection = state.selection;
+
+        this.registerEditorActions();
+    }
+
+    override registerButtons(state: S): void {
+        const editorRoot = this.domRoot.find('.monaco-placeholder')[0];
+        this.createEditor(editorRoot);
+        this.editorDecorations = this.editor.createDecorationsCollection();
+        this.fontScale = new FontScale(this.domRoot, state, this.editor);
+    }
+
+    override getCurrentState(): MonacoPaneState {
+        const parent = super.getCurrentState();
+        const state: MonacoPaneState = {
+            selection: this.selection,
+            ...parent,
+        };
+        this.fontScale.addState(state);
+        return state;
+    }
+
+    resize() {
+        _.defer(() => {
+            const topBarHeight = utils.updateAndCalcTopBarHeight(this.domRoot, this.topBar, this.hideable);
+            this.editor.layout({
+                width: unwrap(this.domRoot.width()),
+                height: unwrap(this.domRoot.height()) - topBarHeight,
+            });
+        });
+    }
+
+    /**
+     * Initialize the monaco editor instance. Typical implementation for looks
+     * like this:
+     *
+     * ```ts
+     * return monaco.editor.create(editorRoot, extendConfig({
+     *     // goodies
+     * }));
+     * ```
+     */
+    abstract createEditor(editorRoot: HTMLElement): void;
+
+    protected override onSettingsChange(settings: SiteSettings) {
+        super.onSettingsChange(settings);
         this.editor.updateOptions({
             contextmenu: settings.useCustomContextMenu,
             minimap: {
@@ -245,27 +325,68 @@ export abstract class Pane<E extends monaco.editor.IEditor, S> {
         });
     }
 
-    getCurrentState() {
-        const state = {
-            id: this.compilerInfo.compilerId,
-            editorId: this.compilerInfo.editorId,
-            selection: this.selection,
-        };
-        this.fontScale.addState(state);
-        return state;
+    protected onDidChangeCursorSelection(event: monaco.editor.ICursorSelectionChangedEvent) {
+        if (this.isAwaitingInitialResults) {
+            this.selection = event.selection;
+            this.updateState();
+        }
     }
 
-    updateState() {
-        this.container.setState(this.getCurrentState());
-    }
+    /** Initialize standard lifecycle hooks */
+    protected override registerStandardCallbacks(): void {
+        super.registerStandardCallbacks();
 
-    resize() {
-        const topBarHeight = utils.updateAndCalcTopBarHeight(this.domRoot,
-            this.topBar, this.hideable);
-        if (!this.editor) return;
-        this.editor.layout({
-            width: this.domRoot.width(),
-            height: this.domRoot.height() - topBarHeight,
+        if (this.fontScale) this.fontScale.on('change', this.updateState.bind(this));
+        this.eventHub.on('broadcastFontScale', (scale: number) => {
+            this.fontScale.setScale(scale);
+            this.updateState();
         });
+        this.eventHub.on('printrequest', this.sendPrintData, this);
+    }
+
+    /**
+     * Optionally overridable code for initializing monaco actions on the
+     * editor instance
+     */
+    registerEditorActions(): void {}
+
+    /**
+     * Utility function to check if this is a code editor or something else (like a diff editor)
+     */
+    protected isStandaloneEditor(editor: monaco.editor.IEditor): editor is monaco.editor.IStandaloneCodeEditor {
+        return editor.getEditorType() === 'vs.editor.ICodeEditor';
+    }
+    /**
+     * Get the name of the pane to be displayed in the print view
+     */
+    abstract getPrintName(): string;
+
+    /**
+     * Send any printable content to the print view when requested
+     */
+    protected sendPrintData() {
+        const editor = this.editor;
+        if (this.isStandaloneEditor(editor)) {
+            const model = (editor as monaco.editor.IStandaloneCodeEditor).getModel();
+            if (model) {
+                const lines = [...new Array(model.getLineCount()).keys()].map(i =>
+                    monaco.editor.colorizeModelLine(model, i + 1),
+                );
+                const extra = this.getExtraPrintData();
+                this.eventHub.emit(
+                    'printdata',
+                    `<h1>${this.getPrintName()}: ${escapeHTML(this.getPaneName())}</h1>` +
+                        (extra ?? '') +
+                        `<code>${lines.join('<br/>\n')}</code>`,
+                );
+            }
+        }
+    }
+
+    /**
+     * Provide additional info to be included below the header in the default sendPrintData
+     */
+    protected getExtraPrintData(): string | undefined {
+        return undefined;
     }
 }

@@ -28,7 +28,12 @@ html(lang="en")
       | (function () {
       |   try {
       |     var settings = window.localStorage.getItem("!{localStoragePrefix}settings") || '{}';
-      |     var theme = JSON.parse(settings).theme || 'default';
+      |     var theme = JSON.parse(settings).theme || (
+      |         window.matchMedia ?
+      |             (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default')
+      |             : 'dark'
+      |     );
+      |     if(theme === 'darkplus') theme = 'dark';
       |     document.documentElement.setAttribute('data-theme', theme);
       |   } catch (e) {
       |     document.documentElement.setAttribute('data-theme', 'default');
@@ -45,8 +50,11 @@ html(lang="en")
               else
                 a(href=`${httpRoot}noscript`) click here
 
+    block printstuff
+        #printview Hello
+
     block footer
-        include templates.pug
+        include templates/templates
 
     block scripts
         script(src=`${httpRoot}client-options.js?hash=${optionsHash}`)

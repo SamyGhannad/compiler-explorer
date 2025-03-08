@@ -22,21 +22,24 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import _ from 'underscore';
+import {Container} from 'golden-layout';
+import $ from 'jquery';
 import * as monaco from 'monaco-editor';
-import { Container } from 'golden-layout';
+import _ from 'underscore';
 
-import { Pane } from './pane';
-import { BasePaneState } from './pane.interfaces';
-import { RustMacroExpState } from './rustmacroexp-view.interfaces';
+import {MonacoPaneState} from './pane.interfaces.js';
+import {MonacoPane} from './pane.js';
+import {RustMacroExpState} from './rustmacroexp-view.interfaces.js';
 
-import { ga } from '../analytics';
-import { extendConfig } from '../monaco-config';
+import {CompilationResult} from '../compilation/compilation.interfaces.js';
+import {CompilerInfo} from '../compiler.interfaces.js';
+import {Hub} from '../hub.js';
+import {extendConfig} from '../monaco-config.js';
 
-export class RustMacroExp extends Pane<monaco.editor.IStandaloneCodeEditor, RustMacroExpState> {
-    constructor(hub: any, container: Container, state: RustMacroExpState & BasePaneState) {
+export class RustMacroExp extends MonacoPane<monaco.editor.IStandaloneCodeEditor, RustMacroExpState> {
+    constructor(hub: Hub, container: Container, state: RustMacroExpState & MonacoPaneState) {
         super(hub, container, state);
-        if (state && state.rustMacroExpOutput) {
+        if (state.rustMacroExpOutput) {
             this.showRustMacroExpResults(state.rustMacroExpOutput);
         }
     }
@@ -45,69 +48,76 @@ export class RustMacroExp extends Pane<monaco.editor.IStandaloneCodeEditor, Rust
         return $('#rustmacroexp').html();
     }
 
-    override createEditor(editorRoot: HTMLElement): monaco.editor.IStandaloneCodeEditor {
-        return monaco.editor.create(editorRoot, extendConfig({
-            language: 'rust',
-            readOnly: true,
-            glyphMargin: true,
-            lineNumbersMinChars: 3,
-        }));
+    override createEditor(editorRoot: HTMLElement): void {
+        this.editor = monaco.editor.create(
+            editorRoot,
+            extendConfig({
+                language: 'rust',
+                readOnly: true,
+                glyphMargin: true,
+                lineNumbersMinChars: 3,
+            }),
+        );
     }
 
-    override registerOpeningAnalyticsEvent(): void {
-        ga.proxy('send', {
-            hitType: 'event',
-            eventCategory: 'OpenViewPane',
-            eventAction: 'RustMacroExp',
-        });
+    override getPrintName() {
+        return 'Rust Macro Expansion Output';
     }
 
-    override getPaneName(): string {
-        return `Rust Macro Expansion Viewer ${this.compilerInfo.compilerName}` +
-            `(Editor #${this.compilerInfo.editorId}, ` +
-            `Compiler #${this.compilerInfo.compilerId})`;
+    override getDefaultPaneName(): string {
+        return 'Rust Macro Expansion Viewer';
     }
 
     override registerCallbacks(): void {
-        const throttleFunction = _.throttle((event) => this.onDidChangeCursorSelection(event), 500);
-        this.editor.onDidChangeCursorSelection((event) => throttleFunction(event));
+        const throttleFunction = _.throttle(
+            (event: monaco.editor.ICursorSelectionChangedEvent) => this.onDidChangeCursorSelection(event),
+            500,
+        );
+        this.editor.onDidChangeCursorSelection(event => throttleFunction(event));
         this.eventHub.emit('rustMacroExpViewOpened', this.compilerInfo.compilerId);
         this.eventHub.emit('requestSettings');
     }
 
-    override onCompileResult(compilerId: number, compiler: any, result: any): void {
+    override onCompileResult(compilerId: number, compiler: CompilerInfo, result: CompilationResult): void {
         if (this.compilerInfo.compilerId !== compilerId) return;
-        if (result.hasRustMacroExpOutput) {
+        if (result.rustMacroExpOutput) {
             this.showRustMacroExpResults(result.rustMacroExpOutput);
         } else if (compiler.supportsRustMacroExpView) {
             this.showRustMacroExpResults([{text: '<No output>'}]);
         }
     }
 
-    override onCompiler(compilerId: number, compiler: any, options: any, editorId: number): void {
+    override onCompiler(
+        compilerId: number,
+        compiler: CompilerInfo | null,
+        options: string,
+        editorId?: number,
+        treeId?: number,
+    ): void {
         if (this.compilerInfo.compilerId === compilerId) {
             this.compilerInfo.compilerName = compiler ? compiler.name : '';
             this.compilerInfo.editorId = editorId;
-            this.setTitle();
+            this.compilerInfo.treeId = treeId;
+            this.updateTitle();
             if (compiler && !compiler.supportsRustMacroExpView) {
-                this.showRustMacroExpResults([{
-                    text: '<Rust Macro Expansion output is not supported for this compiler>',
-                }]);
+                this.showRustMacroExpResults([
+                    {
+                        text: '<Rust Macro Expansion output is not supported for this compiler>',
+                    },
+                ]);
             }
         }
     }
 
     showRustMacroExpResults(result: any[]): void {
-        if (!this.editor) return;
-        this.editor.getModel().setValue(result.length
-            ? _.pluck(result, 'text').join('\n')
-            : '<No Rust Macro Expansion generated>');
+        this.editor
+            .getModel()
+            ?.setValue(result.length ? _.pluck(result, 'text').join('\n') : '<No Rust Macro Expansion generated>');
 
         if (!this.isAwaitingInitialResults) {
             if (this.selection) {
                 this.editor.setSelection(this.selection);
-                this.editor.revealLinesInCenter(this.selection.selectionStartLineNumber,
-                    this.selection.endLineNumber);
+                this.editor.revealLinesInCenter(this.selection.selectionStartLineNumber, this.selection.endLineNumber);
             }
             this.isAwaitingInitialResults = true;
         }

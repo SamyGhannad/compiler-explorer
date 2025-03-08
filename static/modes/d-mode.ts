@@ -21,11 +21,9 @@
 // CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
+import * as monaco from 'monaco-editor';
 
-'use strict';
-const monaco = require('monaco-editor');
-
-function definition() {
+function definition(): monaco.languages.IMonarchLanguage {
     return {
         defaultToken: 'invalid',
 
@@ -141,19 +139,72 @@ function definition() {
             '__gshared',
             '__traits',
             '__vector',
-            '__parameters'],
+            '__parameters',
+        ],
 
         typeKeywords: [
-            'bool', 'byte', 'ubyte', 'short', 'ushort', 'int', 'uint', 'long', 'ulong', 'char', 'wchar', 'dchar',
-            'float', 'double', 'real', 'ifloat', 'idouble', 'ireal', 'cfloat', 'cdouble', 'creal', 'void',
+            'bool',
+            'byte',
+            'ubyte',
+            'short',
+            'ushort',
+            'int',
+            'uint',
+            'long',
+            'ulong',
+            'char',
+            'wchar',
+            'dchar',
+            'float',
+            'double',
+            'real',
+            'ifloat',
+            'idouble',
+            'ireal',
+            'cfloat',
+            'cdouble',
+            'creal',
+            'void',
         ],
 
         operators: [
-            '=', '>', '<', '!', '~', '?', ':',
-            '==', '<=', '>=', '!=', '&&', '||', '++', '--',
-            '+', '-', '*', '/', '&', '|', '^', '%', '<<',
-            '>>', '>>>', '+=', '-=', '*=', '/=', '&=', '|=',
-            '^=', '%=', '<<=', '>>=', '>>>=',
+            '=',
+            '>',
+            '<',
+            '!',
+            '~',
+            '?',
+            ':',
+            '==',
+            '<=',
+            '>=',
+            '!=',
+            '&&',
+            '||',
+            '++',
+            '--',
+            '+',
+            '-',
+            '*',
+            '/',
+            '&',
+            '|',
+            '^',
+            '%',
+            '<<',
+            '>>',
+            '>>>',
+            '+=',
+            '-=',
+            '*=',
+            '/=',
+            '&=',
+            '|=',
+            '^=',
+            '%=',
+            '<<=',
+            '>>=',
+            '>>>=',
         ],
 
         // we include these common regular expressions
@@ -164,14 +215,17 @@ function definition() {
         tokenizer: {
             root: [
                 // identifiers and keywords
-                [/[a-z_$][\w$]*/, {
-                    cases: {
-                        '@typeKeywords': 'keyword',
-                        '@keywords': 'keyword',
-                        '@default': 'identifier',
+                [
+                    /[a-z_$][\w$]*/,
+                    {
+                        cases: {
+                            '@typeKeywords': 'keyword',
+                            '@keywords': 'keyword',
+                            '@default': 'identifier',
+                        },
                     },
-                }],
-                [/[A-Z][\w$]*/, 'type.identifier'],  // to show class names nicely
+                ],
+                [/[A-Z][\w$]*/, 'type.identifier'], // to show class names nicely
 
                 // whitespace
                 {include: '@whitespace'},
@@ -179,12 +233,15 @@ function definition() {
                 // delimiters and operators
                 [/[{}()[\]]/, '@brackets'],
                 [/[<>](?!@symbols)/, '@brackets'],
-                [/@symbols/, {
-                    cases: {
-                        '@operators': 'operator',
-                        '@default': '',
+                [
+                    /@symbols/,
+                    {
+                        cases: {
+                            '@operators': 'operator',
+                            '@default': '',
+                        },
                     },
-                }],
+                ],
 
                 // numbers
                 [/\d*\.\d+([eE][-+]?\d+)?[fFdD]?/, 'number.float'],
@@ -197,7 +254,7 @@ function definition() {
                 [/[;,.]/, 'delimiter'],
 
                 // strings
-                [/"([^"\\]|\\.)*$/, 'string.invalid'],  // non-teminated string
+                [/"([^"\\]|\\.)*$/, 'string.invalid'], // non-teminated string
                 [/"/, 'string', '@string'],
                 [/`/, 'string', '@rawstring'],
 
@@ -243,7 +300,7 @@ function definition() {
     };
 }
 
-function configuration() {
+function configuration(): monaco.languages.LanguageConfiguration {
     return {
         comments: {
             lineComment: '//',
@@ -262,7 +319,7 @@ function configuration() {
             {open: '(', close: ')'},
             {open: '`', close: '`', notIn: ['string']},
             {open: '"', close: '"', notIn: ['string']},
-            {open: '\'', close: '\'', notIn: ['string', 'comment']},
+            {open: "'", close: "'", notIn: ['string', 'comment']},
         ],
 
         surroundingPairs: [
@@ -271,7 +328,7 @@ function configuration() {
             {open: '(', close: ')'},
             {open: '`', close: '`'},
             {open: '"', close: '"'},
-            {open: '\'', close: '\''},
+            {open: "'", close: "'"},
         ],
     };
 }
@@ -279,5 +336,3 @@ function configuration() {
 monaco.languages.register({id: 'd'});
 monaco.languages.setMonarchTokensProvider('d', definition());
 monaco.languages.setLanguageConfiguration('d', configuration());
-
-export {};

@@ -22,12 +22,14 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-'use strict';
+import $ from 'jquery';
 
-const monaco = require('monaco-editor');
-const cpp = require('monaco-editor/esm/vs/basic-languages/cpp/cpp');
+import * as monaco from 'monaco-editor';
 
-function definition() {
+// @ts-ignore  "Could not find a declaration file"
+import * as cpp from 'monaco-editor/esm/vs/basic-languages/cpp/cpp';
+
+function definition(): monaco.languages.IMonarchLanguage {
     const ispc = $.extend(true, {}, cpp.language); // deep copy
 
     ispc.tokenPostfix = '.ispc';
@@ -76,7 +78,7 @@ function definition() {
         'uint8',
         'uniform',
         'unmasked',
-        'varying'
+        'varying',
     );
     return ispc;
 }
@@ -84,5 +86,3 @@ function definition() {
 monaco.languages.register({id: 'ispc'});
 monaco.languages.setLanguageConfiguration('ispc', cpp.conf);
 monaco.languages.setMonarchTokensProvider('ispc', definition());
-
-export {};

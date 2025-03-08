@@ -21,11 +21,9 @@
 // CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
+import * as monaco from 'monaco-editor';
 
-'use strict';
-const monaco = require('monaco-editor');
-
-function definition() {
+function definition(): monaco.languages.IMonarchLanguage {
     return {
         // Set defaultToken to invalid to see what you do not tokenize yet
         defaultToken: 'invalid',
@@ -41,20 +39,30 @@ function definition() {
             root: [
                 // Error document
                 [/^<.*>$/, {token: 'annotation'}],
-                // Label definition
-                [/^[.a-zA-Z0-9_$?@].*:/, {token: 'type.identifier'}],
+                // inline comments
+                [/\/\*/, 'comment', '@comment'],
+                // Label definition (anything looking like a label, followed by anything that's not valid in a demangled
+                // identifier, until we get to a colon followed by any whitespace. This is to avoid finding the colon in
+                // a scoped (blah::foo) identifier.
+                [/^[.a-zA-Z0-9_$?@][^#;/]*:(?=\s)/, {token: 'type.identifier'}],
                 // Label definition (quoted)
                 [/^"([^"\\]|\\.)*":/, {token: 'type.identifier'}],
                 // Label definition (ARM style)
                 [/^\s*[|][^|]*[|]/, {token: 'type.identifier'}],
-                // Label definition (CL style)
-                [/^\s*[.a-zA-Z0-9_$|]*\s+(PROC|ENDP|DB|DD)/, {token: 'type.identifier'}],
+                // Label definition (CL style). This is pretty hideous: we essentially take anything that ends in spaces
+                // followed by a definition (PROC, ENDP etc) and assume it's a label. That means we have to use
+                // backtracking and then a lookahead to ensure we don't consume the definition. As a nod to efficiency
+                // we assume the line has to start with a non-whitespace character before we go all back-tracky.
+                // See https://github.com/compiler-explorer/compiler-explorer/issues/1645 for examples.
+                [/^\S.*?(?=\s+(PROC|ENDP|D[BDWQ]))/, {token: 'type.identifier', next: '@rest'}],
                 // Constant definition
                 [/^[.a-zA-Z0-9_$?@][^=]*=/, {token: 'type.identifier'}],
                 // opcode
                 [/[.a-zA-Z_][.a-zA-Z_0-9]*/, {token: 'keyword', next: '@rest'}],
                 // braces and parentheses at the start of the line (e.g. nvcc output)
                 [/[(){}]/, {token: 'operator', next: '@rest'}],
+                // msvc can have strings at the start of a line in a inSegDirList
+                [/`/, {token: 'string.backtick', bracket: '@open', next: '@segDirMsvcstring'}],
 
                 // whitespace
                 {include: '@whitespace'},
@@ -66,6 +74,11 @@ function definition() {
 
                 [/@registers/, 'variable.predefined'],
                 [/@intelOperators/, 'annotation'],
+                // inline comments
+                [/\/\*/, 'comment', '@comment'],
+                // CL style post-label definition.
+                [/PROC|ENDP|D[BDWQ]/, 'keyword'],
+
                 // brackets
                 [/[{}<>()[\]]/, '@brackets'],
 
@@ -83,8 +96,10 @@ function definition() {
                 [/[-+,*/!:&{}()]/, 'operator'],
 
                 // strings
-                [/"([^"\\]|\\.)*$/, 'string.invalid'],  // non-terminated string
+                [/"([^"\\]|\\.)*$/, 'string.invalid'], // non-terminated string
                 [/"/, {token: 'string.quote', bracket: '@open', next: '@string'}],
+                // `msvc does this, sometimes'
+                [/`/, {token: 'string.backtick', bracket: '@open', next: '@msvcstring'}],
                 [/'/, {token: 'string.singlequote', bracket: '@open', next: '@sstring'}],
 
                 // characters
@@ -92,8 +107,8 @@ function definition() {
                 [/(')(@escapes)(')/, ['string', 'string.escape', 'string']],
                 [/'/, 'string.invalid'],
 
-                // Assume anything else is a label reference
-                [/%?[.?_$a-zA-Z@][.?_$a-zA-Z0-9@]*/, 'type.identifier'],
+                // Assume anything else is a label reference. .NET uses ` in some identifiers
+                [/%?[.?_$a-zA-Z@][.?_$a-zA-Z0-9@`]*/, 'type.identifier'],
 
                 // whitespace
                 {include: '@whitespace'},
@@ -101,7 +116,7 @@ function definition() {
 
             comment: [
                 [/[^/*]+/, 'comment'],
-                [/\/\*/, 'comment', '@push'],    // nested comment
+                [/\/\*/, 'comment', '@push'], // nested comment
                 ['\\*/', 'comment', '@pop'],
                 [/[/*]/, 'comment'],
             ],
@@ -111,6 +126,23 @@ function definition() {
                 [/@escapes/, 'string.escape'],
                 [/\\./, 'string.escape.invalid'],
                 [/"/, {token: 'string.quote', bracket: '@close', next: '@pop'}],
+            ],
+
+            msvcstringCommon: [
+                [/[^\\']+/, 'string'],
+                [/@escapes/, 'string.escape'],
+                [/''/, 'string.escape'], // ` isn't escaped but ' is escaped as ''
+                [/\\./, 'string.escape.invalid'],
+            ],
+
+            msvcstring: [
+                {include: '@msvcstringCommon'},
+                [/'/, {token: 'string.backtick', bracket: '@close', next: '@pop'}],
+            ],
+
+            segDirMsvcstring: [
+                {include: '@msvcstringCommon'},
+                [/'/, {token: 'string.backtick', bracket: '@close', switchTo: '@rest'}],
             ],
 
             sstring: [
@@ -134,4 +166,4 @@ const def = definition();
 monaco.languages.register({id: 'asm'});
 monaco.languages.setMonarchTokensProvider('asm', def);
 
-export = def;
+export default def;

@@ -1,4 +1,5 @@
 ---
+maxTopIcons: 3
 levels:
   - name: Corporate Sponsors
     description: 'Enormous thanks to our corporate sponsors. Please visit their websites below:'
@@ -9,7 +10,7 @@ levels:
         img: https://static.ce-cdn.net/SOLID+SANDS-LOGO-RGB-500px.png
         url: https://solidsands.com/
         priority: 100
-        topIcon: true
+        topIconShowEvery: 3
         statsId: solid_sands
       - name: Intel
         description: We engineer solutions for our customers’ greatest challenges with reliable, cloud to edge computing, inspired by Moore’s Law.
@@ -17,9 +18,42 @@ levels:
         img: https://static.ce-cdn.net/intel/logo-classicblue-3000px.png
         url: https://intel.com/
         priority: 400
-        topIcon: true
-        sideBySide: true
+        topIconShowEvery: 1
+        displayType: SideBySide
         statsId: intel
+      - name: Google
+        description: Google’s mission is to organize the world's information and make it universally accessible and useful.
+        img: https://static.ce-cdn.net/google/logo_Google_FullColor_xxxhdpi_830x271px.png
+        url: https://google.com/
+        topIconShowEvery: 3
+        displayType: SideBySide
+        statsId: google
+      - name: thinkcell
+        description: Looking for C++ Developers (m/f/d) in Berlin and REMOTE. Earn up to 130 000 EUR per year.
+        img: https://static.ce-cdn.net/thinkcell/think-cell-wb-2.svg
+        url: https://www.think-cell.com/compilerexplorer
+        topIconShowEvery: 3
+        displayType: SideBySide
+        statsId: thinkcell
+        bgColour: rgb(110, 166, 0)
+      - name: CLion
+        description: CLion, the cross-platform IDE for C and C++, is robust, responsive, and loaded with new functionality to help you make your development experience smoother and more productive.
+        icon: https://static.ce-cdn.net/jetbrains/Jetbrains.png
+        icon_dark: https://static.ce-cdn.net/jetbrains/JetbrainsWhite.png
+        img: https://static.ce-cdn.net/jetbrains/ClionWhite.png
+        url: https://jb.gg/clion_ce
+        topIconShowEvery: 3
+        displayType: SideBySide
+        statsId: jetbrains
+      - name: Cppcon
+        description: Join the CppCon family live &amp; in-person this September in Aurora, Colorado, USA! Pre-register for CppCon 2025 at <a href="https://www.CppCon.org" target="_blank">www.CppCon.org</a>.
+        img: https://static.ce-cdn.net/cppcon/cppcon-white-gold-5.svg
+        icon: https://static.ce-cdn.net/cppcon/cppcon-blue-gold-5.svg
+        icon_dark: https://static.ce-cdn.net/cppcon/cppcon-white-gold-5.svg
+        url: https://cppcon.org/
+        displayType: SideBySide
+        topIconShowEvery: 3
+        statsId: cppcon
   - name: Patreon Legends
     description: 'These amazing people have pledged at the highest level of support. Huge thanks to these fine folks:'
     class: legendary
@@ -53,6 +87,16 @@ levels:
       - Kade Phillips
       - Brendan Bellows
       - Daniel Williams
+      - name: Paul Williams
+        url: https://pcwilliams.design/
+      - name: Molecular Matters GmbH
+        url: https://liveplusplus.tech/
+      - Rui Ueyama
+      - name: Edison Design Group
+        url: https://www.edg.com/
+      - name: Daniel Jennings
+      - name: 3dB Labs
+        url: https://www.3db-labs.com/
   - name: Patreons
     description: 'Thanks to all my patrons:'
     sponsors:
@@ -135,11 +179,9 @@ levels:
       - Reiner Eiteljoerge
       - Johnathan Roatch
       - John Biesnecker
-      - Paul Williams
       - CB Bailey
       - Joe Doyle
       - Jason Rice
-      - Rui Ueyama
       - Narut Sereewattanawoot
       - Travis Geiselbrecht
       - Chris Kennelly
@@ -346,3 +388,134 @@ levels:
       - Nathan Lawrence
       - Barry Brown
       - Jan Stoltenberg-Lerche
+      - Angus Hewlett
+      - Joshua
+      - Vladimir Motyka
+      - Gerasimos Chourdakis
+      - Dusan Jovanovic
+      - Geoff Evans
+      - Pat Monaghan
+      - NoNae
+      - Martin Weitzel
+      - Scott Bruce
+      - Sergii Lovygin
+      - Marton Szasz
+      - CiotatSoft
+      - Tadej P
+      - Adam Byrd
+      - Jonathan Watmough
+      - Neil Bickford
+      - Unstillable
+      - cedric chanoine
+      - Cristian Kocza
+      - Benji Smith
+      - John Mertus
+      - Nick Darnell
+      - Cordell Bloor
+      - Daniele Salvatore Albano
+      - Frank Wessels
+      - Michele Bianchi
+      - Chandler Carruth
+      - Daniel Collin
+      - Deirdre Connolly
+      - Devin Alexander Torres
+      - Frede
+      - Geert Jansen
+      - Greg Bowyer
+      - Jaepil Jeong
+      - Jakob P. Liljenberg
+      - Javier Alvarez
+      - Jon Gjengset
+      - Komari Spaghetti
+      - L. A. F. Pereira
+      - Martin Hořeňovský
+      - Michael Ford
+      - Michael Sartain
+      - Patricia Aas
+      - Rasmus
+      - Siyuan.H
+      - Vezel
+      - lcnr
+      - Abhishek Bhrushundi
+      - Jacob Van Buren
+      - Martin Ertsås
+      - Ryan Zurrin
+      - Jason Jack Tan
+      - Kim Walisch
+      - furl
+      - Gwendolyn Hunt
+      - Vince
+      - William Hawkins
+      - Edward Minnix
+      - Elena Sagalaeva
+      - João Baptista de Paula e Silva
+      - abrasumente
+      - Razvan-Adrian Ciochina
+      - Steve W
+      - Lapys
+      - Scott Michaud
+      - Guillaume Xavier Taillon
+      - Xavier R. Guérin
+      - Vamist
+      - David Capello
+      - Turing Eret
+      - Kris van Rens
+      - fubar
+      - dvirtz
+      - ezki
+      - Patrick Eads
+      - Ivan Pribec
+      - Ben Sunshine-Hill
+      - Sam Mish
+      - Aleš Křivák
+      - Elias Nodland
+      - Andy Bell
+      - lv426
+      - Benjamin Hannel
+      - Cupcake
+      - Rob Napier
+      - Dean Berris
+      - Andrew Tridgell
+      - Nick Gully
+      - Ryan Brott
+      - Олег Шатов
+      - Pieter van Schendel
+      - LukeHjo
+      - oldspiderdude
+      - Harish Naik
+      - Gabriel Ravier
+      - Лев Роскошин
+      - salusdano
+      - Nitin A
+      - Aaron D. Marasco
+      - Tomas Karban
+      - Abdullah Al-Kheshen
+      - Matthew Kolbe
+      - Cem Dervis
+      - Chris Barlas
+      - Dino Occhialini
+      - Gregory Popovitch
+      - Isaac Cloos
+      - Joachim Meyer
+      - Martin Pernica
+      - Matthew Nielsen
+      - Michael
+      - Mike
+      - Paul Horn
+      - Per Tillisch
+      - Tobias Neukom
+      - mason
+      - Apostolos Piperis
+      - Patrik Bachan
+      - Simon Turner
+      - Sharad Khanna
+      - Kim Gräsman
+      - Waffles The Dog
+      - Pablo Halpern
+      - Benjamin FrantzDale
+      - Jevin Sweval
+      - woobwoobwoob
+      - Drew Dormann
+      - Ryan Lee
+      - elliot
+      - Cemalettin Dervis

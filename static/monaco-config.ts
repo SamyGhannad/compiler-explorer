@@ -22,10 +22,10 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import _ from 'underscore';
 import * as monaco from 'monaco-editor';
+import _ from 'underscore';
 
-import { SiteSettings } from './settings';
+import {SiteSettings} from './settings.js';
 
 const DEFAULT_MONACO_CONFIG = {
     fontFamily: 'Consolas, "Liberation Mono", Courier, monospace',
@@ -35,20 +35,21 @@ const DEFAULT_MONACO_CONFIG = {
     minimap: {
         maxColumn: 80,
     },
+    stickyScroll: {
+        enabled: false,
+    },
     folding: true,
     lineNumbersMinChars: 1,
     emptySelectionClipboard: true,
+    wrappingStrategy: 'advanced',
 };
 
-type EditorKinds =
-    | monaco.editor.IStandaloneDiffEditor
-    | monaco.editor.IStandaloneCodeEditor;
+type EditorKinds = monaco.editor.IStandaloneDiffEditor | monaco.editor.IStandaloneCodeEditor;
 
-/** Pick consturction options based on editor kind */
-type EditorConstructionType<E extends EditorKinds> =
-    E extends monaco.editor.IStandaloneDiffEditor
-        ? monaco.editor.IDiffEditorConstructionOptions
-        : monaco.editor.IStandaloneEditorConstructionOptions;
+/** Pick construction options based on editor kind */
+type EditorConstructionType<E extends EditorKinds> = E extends monaco.editor.IStandaloneDiffEditor
+    ? monaco.editor.IDiffEditorConstructionOptions
+    : monaco.editor.IStandaloneEditorConstructionOptions;
 
 /**
  * Extend the default monaco editor construction options.
@@ -62,17 +63,20 @@ type EditorConstructionType<E extends EditorKinds> =
  */
 export function extendConfig<
     E extends EditorKinds = monaco.editor.IStandaloneCodeEditor,
-    T = EditorConstructionType<E>>(
-    overrides: T,
-    settings?: Pick<SiteSettings, 'editorsFFont' | 'autoIndent' | 'useVim' | 'editorsFLigatures'>
-): T {
+    T = EditorConstructionType<E>,
+>(overrides: T, settings?: Pick<SiteSettings, 'editorsFFont' | 'autoIndent' | 'useVim' | 'editorsFLigatures'>): T {
     if (settings !== undefined) {
-        return _.extend({}, DEFAULT_MONACO_CONFIG, {
-            fontFamily: settings.editorsFFont,
-            autoIndent: settings.autoIndent ? 'advanced' : 'none',
-            vimInUse: settings.useVim,
-            fontLigatures: settings.editorsFLigatures,
-        }, overrides);
+        return _.extend(
+            {},
+            DEFAULT_MONACO_CONFIG,
+            {
+                fontFamily: settings.editorsFFont,
+                autoIndent: settings.autoIndent ? 'advanced' : 'none',
+                vimInUse: settings.useVim,
+                fontLigatures: settings.editorsFLigatures,
+            },
+            overrides,
+        );
     }
     return _.extend({}, DEFAULT_MONACO_CONFIG, overrides);
 }
